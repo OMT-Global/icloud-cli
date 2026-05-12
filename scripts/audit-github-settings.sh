@@ -4,6 +4,26 @@ set -euo pipefail
 repo="${1:-OMT-Global/icloud-cli}"
 branch="${2:-main}"
 
+url_encode_path_segment() {
+  local raw="$1"
+  local encoded=""
+  local i char
+  for ((i = 0; i < ${#raw}; i++)); do
+    char="${raw:i:1}"
+    case "$char" in
+      [a-zA-Z0-9._~-])
+        encoded+="$char"
+        ;;
+      *)
+        printf -v encoded '%s%%%02X' "$encoded" "'$char"
+        ;;
+    esac
+  done
+  printf '%s' "$encoded"
+}
+
+encoded_branch="$(url_encode_path_segment "$branch")"
+
 echo "Repository settings for ${repo}:"
 gh repo view "$repo" \
   --json nameWithOwner,visibility,deleteBranchOnMerge,hasIssuesEnabled,hasProjectsEnabled \
@@ -17,7 +37,7 @@ gh repo view "$repo" \
 
 echo
 echo "Branch protection for ${repo}:${branch}:"
-if protection_json="$(gh api "repos/${repo}/branches/${branch}/protection" 2>/tmp/icloud-cli-branch-protection.err)"; then
+if protection_json="$(gh api "repos/${repo}/branches/${encoded_branch}/protection" 2>/tmp/icloud-cli-branch-protection.err)"; then
   jq '{
     requiredStatusChecks: .required_status_checks.contexts,
     strictStatusChecks: .required_status_checks.strict,
