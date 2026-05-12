@@ -12,3 +12,4 @@ DerivedData/
 *.xcresult
 coverage/
 tmp/
+dist/
