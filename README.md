@@ -13,7 +13,7 @@ The initial implementation reads local Safari session property lists from `~/Lib
 
 If Safari session files are unreadable, the command exits with an error naming the file paths it tried. If the files are readable but empty, the error says no tabs were found instead of treating it as a permissions problem.
 
-Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device tab store is present and readable before enabling any cloud-tab parsing. See [docs/cloudtabs.md](docs/cloudtabs.md) for the investigation notes and [docs/privacy.md](docs/privacy.md) for the privacy and permissions model.
+Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device tab store is present and readable before enabling any cloud-tab parsing. See [docs/cloudtabs.md](docs/cloudtabs.md) for the investigation notes, [docs/privacy.md](docs/privacy.md) for the privacy and permissions model, and [docs/openclaw-skill-contract.md](docs/openclaw-skill-contract.md) for the OpenClaw integration contract.
 
 ## Build
 
