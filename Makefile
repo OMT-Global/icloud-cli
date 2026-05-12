@@ -20,7 +20,7 @@ test:
 release:
 	swift build $(SWIFT_FLAGS) -c release
 	mkdir -p dist
-	cp .build/release/icloud-cli dist/icloud-cli
+	cp "$$(swift build $(SWIFT_FLAGS) -c release --show-bin-path)/icloud-cli" dist/icloud-cli
 	shasum -a 256 dist/icloud-cli > dist/icloud-cli.sha256
 
 run:
