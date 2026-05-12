@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>SessionWindows</key>
+  <array>
+    <dict>
+      <key>TabStates</key>
+      <array>
+        <dict>
+          <key>TabURL</key>
+          <string>https://example.com/current</string>
+          <key>TabTitle</key>
+          <string>Current Fixture</string>
+        </dict>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>

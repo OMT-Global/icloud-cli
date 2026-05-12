@@ -6,7 +6,7 @@ This roadmap is mirrored into GitHub issues after repository creation.
 
 - Keep `project.bootstrap.yaml` as the control plane.
 - Require `CI Gate` for PRs.
-- Run `swift build`, `swift test`, and the repo secret scan in the fast gate.
+- Run the repo secret scan, `swift test`, and then `swift build` in the fast gate.
 
 ## 2. Ship `icloud-cli safari tabs`
 

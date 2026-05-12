@@ -24,12 +24,21 @@ public struct SafariTab: Codable, Equatable, Sendable {
 
 public enum SafariTabsError: Error, LocalizedError, Equatable {
     case noReadableSources([String])
+    case noTabsFound([String])
+    case noTabsFoundWithUnreadableSources(readable: [String], unreadable: [String])
     case unsupportedFormat(String)
 
     public var errorDescription: String? {
         switch self {
         case .noReadableSources(let paths):
             return "No readable Safari session files found: \(paths.joined(separator: ", "))"
+        case .noTabsFound(let paths):
+            return "Readable Safari session files did not contain tabs: \(paths.joined(separator: ", "))"
+        case .noTabsFoundWithUnreadableSources(let readable, let unreadable):
+            return """
+                Readable Safari session files did not contain tabs: \(readable.joined(separator: ", ")); \
+                unreadable Safari session files: \(unreadable.joined(separator: ", "))
+                """
         case .unsupportedFormat(let format):
             return "Unsupported output format: \(format)"
         }
@@ -46,11 +55,14 @@ public struct SafariTabsReader: Sendable {
     public func readTabs(source: SafariTabSource = .all) throws -> [SafariTab] {
         let files = sessionFiles(for: source)
         var unreadablePaths: [String] = []
+        var readablePaths: [String] = []
         var tabs: [SafariTab] = []
 
         for file in files {
             do {
-                tabs.append(contentsOf: try readTabs(from: file.url, sourceName: file.sourceName))
+                let sourceTabs = try readTabs(from: file.url, sourceName: file.sourceName)
+                readablePaths.append(file.url.path)
+                tabs.append(contentsOf: sourceTabs)
             } catch CocoaError.fileReadNoSuchFile, CocoaError.fileReadNoPermission {
                 unreadablePaths.append(file.url.path)
             } catch {
@@ -59,7 +71,16 @@ public struct SafariTabsReader: Sendable {
         }
 
         if tabs.isEmpty && !files.isEmpty {
-            throw SafariTabsError.noReadableSources(unreadablePaths)
+            if readablePaths.isEmpty {
+                throw SafariTabsError.noReadableSources(unreadablePaths)
+            }
+            if !unreadablePaths.isEmpty {
+                throw SafariTabsError.noTabsFoundWithUnreadableSources(
+                    readable: readablePaths,
+                    unreadable: unreadablePaths
+                )
+            }
+            throw SafariTabsError.noTabsFound(readablePaths)
         }
 
         return deduplicate(tabs)

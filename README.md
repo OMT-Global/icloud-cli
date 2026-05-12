@@ -10,6 +10,8 @@ icloud-cli safari tabs --source current-session
 
 The initial implementation reads local Safari session property lists from `~/Library/Safari`. That keeps the first slice simple and testable while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
 
+If Safari session files are unreadable, the command exits with an error naming the file paths it tried. If the files are readable but empty, the error says no tabs were found instead of treating it as a permissions problem.
+
 ## Build
 
 ```sh
