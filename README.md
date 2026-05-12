@@ -6,13 +6,14 @@ macOS command-line tools for reading iCloud-backed Apple state. The first suppor
 icloud-cli safari tabs
 icloud-cli safari tabs --format text
 icloud-cli safari tabs --source current-session
+icloud-cli safari cloud-tabs probe
 ```
 
 The initial implementation reads local Safari session property lists from `~/Library/Safari`. That keeps the first slice simple and testable while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
 
 If Safari session files are unreadable, the command exits with an error naming the file paths it tried. If the files are readable but empty, the error says no tabs were found instead of treating it as a permissions problem.
 
-See [docs/privacy.md](docs/privacy.md) for the privacy and permissions model.
+Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device tab store is present and readable before enabling any cloud-tab parsing. See [docs/cloudtabs.md](docs/cloudtabs.md) for the investigation notes and [docs/privacy.md](docs/privacy.md) for the privacy and permissions model.
 
 ## Build
 
