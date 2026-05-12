@@ -44,3 +44,5 @@ node ~/src/omt-global/bootstrap/dist/cli.js apply repo --manifest ./project.boot
 ```
 
 Do not run `bootstrap apply home` for this repo; it intentionally sets `agents.manageCodexHome: false`.
+
+Use `scripts/audit-github-settings.sh` and the checklist in [docs/bootstrap/governance-audit.md](docs/bootstrap/governance-audit.md) after bootstrap changes or org plan changes.
