@@ -17,7 +17,7 @@ Contributions should start from a GitHub issue that is assigned or explicitly en
 
 ## Validation
 
-- Run the relevant local checks before opening a PR.
+- Run `bash scripts/ci/run-fast-checks.sh` before opening a PR unless the PR explains why a check is not applicable.
 - For this bootstrap contract, the required PR check surface is `CI Gate`.
 - Document any skipped checks in the PR with a concrete reason.
 
