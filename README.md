@@ -22,6 +22,16 @@ make build
 make test
 ```
 
+## CI
+
+Run the same local gate that backs PR `CI Gate` before opening a PR:
+
+```sh
+bash scripts/ci/run-fast-checks.sh
+```
+
+The gate checks CI policy drift, shell syntax, secret patterns, privacy fixtures, Swift tests, debug and release builds, and CLI help output.
+
 ## Roadmap
 
 The roadmap lives in GitHub issues. The first milestone focuses on:
