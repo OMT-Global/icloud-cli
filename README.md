@@ -20,7 +20,10 @@ Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device 
 ```sh
 make build
 make test
+make release
 ```
+
+The first distribution path is a source checkout that builds a local release binary. `make release` writes `dist/icloud-cli` and `dist/icloud-cli.sha256`; copy or symlink that binary into the operator's PATH. See [docs/install.md](docs/install.md) for install and upgrade steps.
 
 ## Roadmap
 
