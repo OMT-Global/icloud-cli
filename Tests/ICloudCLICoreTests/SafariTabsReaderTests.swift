@@ -106,6 +106,29 @@ import Testing
     }
 }
 
+@Test func emptyReadableSessionPreservesUnreadableSourcePaths() throws {
+    let tempRoot = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let currentSessionURL = tempRoot.appendingPathComponent("CurrentSession.plist")
+    let missingLastSessionURL = tempRoot.appendingPathComponent("LastSession.plist")
+    let data = try PropertyListSerialization.data(
+        fromPropertyList: ["SessionWindows": []],
+        format: .xml,
+        options: 0
+    )
+    try data.write(to: currentSessionURL)
+
+    #expect(
+        throws: SafariTabsError.noTabsFoundWithUnreadableSources(
+            readable: [currentSessionURL.path],
+            unreadable: [missingLastSessionURL.path]
+        )
+    ) {
+        try SafariTabsReader(safariDirectory: tempRoot).readTabs(source: .all)
+    }
+}
+
 @Test func textRenderingIncludesTitleWhenPresent() throws {
     let rendered = try CommandRunner().render(
         [

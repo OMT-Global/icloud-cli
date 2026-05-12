@@ -25,6 +25,7 @@ public struct SafariTab: Codable, Equatable, Sendable {
 public enum SafariTabsError: Error, LocalizedError, Equatable {
     case noReadableSources([String])
     case noTabsFound([String])
+    case noTabsFoundWithUnreadableSources(readable: [String], unreadable: [String])
     case unsupportedFormat(String)
 
     public var errorDescription: String? {
@@ -33,6 +34,11 @@ public enum SafariTabsError: Error, LocalizedError, Equatable {
             return "No readable Safari session files found: \(paths.joined(separator: ", "))"
         case .noTabsFound(let paths):
             return "Readable Safari session files did not contain tabs: \(paths.joined(separator: ", "))"
+        case .noTabsFoundWithUnreadableSources(let readable, let unreadable):
+            return """
+                Readable Safari session files did not contain tabs: \(readable.joined(separator: ", ")); \
+                unreadable Safari session files: \(unreadable.joined(separator: ", "))
+                """
         case .unsupportedFormat(let format):
             return "Unsupported output format: \(format)"
         }
@@ -67,6 +73,12 @@ public struct SafariTabsReader: Sendable {
         if tabs.isEmpty && !files.isEmpty {
             if readablePaths.isEmpty {
                 throw SafariTabsError.noReadableSources(unreadablePaths)
+            }
+            if !unreadablePaths.isEmpty {
+                throw SafariTabsError.noTabsFoundWithUnreadableSources(
+                    readable: readablePaths,
+                    unreadable: unreadablePaths
+                )
             }
             throw SafariTabsError.noTabsFound(readablePaths)
         }

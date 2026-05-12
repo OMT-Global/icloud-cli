@@ -3,7 +3,7 @@ project:
   name: icloud-cli
   displayName: iCloud CLI
   description: macOS command-line tools for reading iCloud-backed Apple state, starting with Safari tabs.
-  visibility: private
+  visibility: public
   owner: OMT-Global
   defaultBranch: main
 repo:
