@@ -18,6 +18,8 @@ while IFS= read -r -d '' file; do
 
   while IFS= read -r url; do
     case "$url" in
+      http://example.com|https://example.com|http://example.org|https://example.org|http://example.net|https://example.net)
+        ;;
       http://example.com/*|https://example.com/*|http://example.org/*|https://example.org/*|http://example.net/*|https://example.net/*)
         ;;
       https://www.apple.com/DTDs/PropertyList-1.0.dtd)
