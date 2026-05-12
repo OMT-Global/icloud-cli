@@ -37,8 +37,8 @@ gh repo view "$repo" \
 
 echo
 echo "Branch protection for ${repo}:${branch}:"
-if protection_json="$(gh api "repos/${repo}/branches/${encoded_branch}/protection" 2>/tmp/icloud-cli-branch-protection.err)"; then
-  jq '{
+if protection_summary="$(gh api "repos/${repo}/branches/${encoded_branch}/protection" \
+  --jq '{
     requiredStatusChecks: .required_status_checks.contexts,
     strictStatusChecks: .required_status_checks.strict,
     requiredApprovingReviewCount: .required_pull_request_reviews.required_approving_review_count,
@@ -50,7 +50,9 @@ if protection_json="$(gh api "repos/${repo}/branches/${encoded_branch}/protectio
     enforceAdmins: .enforce_admins.enabled,
     allowForcePushes: .allow_force_pushes.enabled,
     allowDeletions: .allow_deletions.enabled
-  }' <<<"$protection_json"
+  }' \
+  2>/tmp/icloud-cli-branch-protection.err)"; then
+  printf '%s\n' "$protection_summary"
 else
   echo "Branch protection is not available or not enabled for ${repo}:${branch}." >&2
   cat /tmp/icloud-cli-branch-protection.err >&2
