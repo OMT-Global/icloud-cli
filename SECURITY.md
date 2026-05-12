@@ -12,3 +12,5 @@ Report security issues privately to the OMT-Global maintainers instead of openin
 - Use synthetic fixtures for tests.
 - Keep raw browsing data local unless an operator explicitly exports it.
 - Redact URLs and local paths in public reports unless they are synthetic examples.
+
+See `docs/privacy.md` for command-level permission expectations and redaction defaults.
