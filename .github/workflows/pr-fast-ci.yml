@@ -1,0 +1,22 @@
+name: PR Fast CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ci-gate:
+    name: CI Gate
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Fast checks
+        run: bash scripts/ci/run-fast-checks.sh

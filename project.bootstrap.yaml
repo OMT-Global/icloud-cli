@@ -1,0 +1,48 @@
+version: 1
+project:
+  name: icloud-cli
+  displayName: iCloud CLI
+  description: macOS command-line tools for reading iCloud-backed Apple state, starting with Safari tabs.
+  visibility: private
+  owner: OMT-Global
+  defaultBranch: main
+repo:
+  managedPaths:
+    - AGENTS.md
+    - CONTRIBUTING.md
+    - CODEOWNERS
+    - .github/PULL_REQUEST_TEMPLATE.md
+    - .github/ISSUE_TEMPLATE/implementation.yml
+    - .github/ISSUE_TEMPLATE/flow_blocker.yml
+archetype:
+  kind: generic-empty
+  packageManager: npm
+  moduleName: icloud_cli
+github:
+  createRepo: true
+  reviewers:
+    - jmcte
+  flowGovernance: true
+  autoMerge: true
+  deleteBranchOnMerge: true
+  requiredApprovals: 1
+  requiredStatusChecks:
+    - CI Gate
+  repoFeatures:
+    hasIssues: true
+    hasProjects: true
+    hasWiki: false
+    hasDiscussions: false
+ci:
+  runnerPolicy: hybrid-safe
+  fastChecks:
+    - build
+    - test
+    - secrets
+release:
+  enabled: false
+agents:
+  manageCodexHome: false
+  sharedSkills:
+    - github
+    - swiftui-patterns

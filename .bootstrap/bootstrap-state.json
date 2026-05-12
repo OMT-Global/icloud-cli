@@ -1,0 +1,12 @@
+{
+  "manifestHash": "dd858397ce7917a7bd54f807f65ebda63d9d636abd7342cfcd578b1e84061abd",
+  "templateVersion": "2026.03.28.2",
+  "managedFiles": {
+    "AGENTS.md": "fc3b1d8bf6a24ac634864c682c73f484ed53d461d04adff94681a2e01ec79908",
+    "CONTRIBUTING.md": "1c928b7790dfcaa51843fb4ccd8722a22202a7748bce6e18a7d887772b709a99",
+    "CODEOWNERS": "d5b88668ece5258a10e66ab476d2135250623474ff24d14748d071c5076559b0",
+    ".github/PULL_REQUEST_TEMPLATE.md": "09b98855ae4da651d392fb1387475b90deff3f0103bcaa17e84294b82297e551",
+    ".github/ISSUE_TEMPLATE/implementation.yml": "539e9d31f2c6b50dab9c25e8d8964d60ae2d750bf957fbca76cb5f3f96d572be",
+    ".github/ISSUE_TEMPLATE/flow_blocker.yml": "bda981825dd7dd683f239a8d6507bab5c722274c0089f00f2ad1cedafa957d3a"
+  }
+}
