@@ -42,3 +42,24 @@ import Testing
         try CLIParser().parse(arguments: ["icloud-cli", "safari", "tabs", "--source", "icloud"])
     }
 }
+
+@Test func parsesCloudTabsProbeOptions() throws {
+    let command = try CLIParser().parse(arguments: [
+        "icloud-cli",
+        "safari",
+        "cloud-tabs",
+        "probe",
+        "--format",
+        "text",
+        "--safari-dir",
+        "/tmp/safari-fixture",
+    ])
+
+    guard case .cloudTabsProbe(let options) = command else {
+        Issue.record("Expected cloud tabs probe command")
+        return
+    }
+
+    #expect(options.format == .text)
+    #expect(options.safariDirectory.path == "/tmp/safari-fixture")
+}

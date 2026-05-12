@@ -21,7 +21,21 @@ public struct SafariTabsOptions: Equatable, Sendable {
     }
 }
 
+public struct CloudTabsProbeOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var safariDirectory: URL
+
+    public init(
+        format: OutputFormat = .json,
+        safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari")
+    ) {
+        self.format = format
+        self.safariDirectory = safariDirectory
+    }
+}
+
 public enum CLICommand: Equatable, Sendable {
+    case cloudTabsProbe(CloudTabsProbeOptions)
     case safariTabs(SafariTabsOptions)
     case help
     case version
@@ -64,12 +78,23 @@ public struct CLIParser: Sendable {
         }
         tokens.removeFirst()
 
-        guard tokens.first == "tabs" else {
+        guard let safariCommand = tokens.first else {
             throw CLIParseError.unknownCommand((["safari"] + tokens).joined(separator: " "))
         }
         tokens.removeFirst()
 
-        return .safariTabs(try parseSafariTabsOptions(tokens))
+        switch safariCommand {
+        case "tabs":
+            return .safariTabs(try parseSafariTabsOptions(tokens))
+        case "cloud-tabs":
+            guard tokens.first == "probe" else {
+                throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " "))
+            }
+            tokens.removeFirst()
+            return .cloudTabsProbe(try parseCloudTabsProbeOptions(tokens))
+        default:
+            throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " "))
+        }
     }
 
     private func parseSafariTabsOptions(_ tokens: [String]) throws -> SafariTabsOptions {
@@ -85,6 +110,32 @@ public struct CLIParser: Sendable {
                     throw CLIParseError.invalidSource(value)
                 }
                 options.source = source
+            case "--format":
+                let value = try value(after: token, in: tokens, at: &index)
+                guard let format = OutputFormat(rawValue: value) else {
+                    throw CLIParseError.invalidFormat(value)
+                }
+                options.format = format
+            case "--safari-dir":
+                let value = try value(after: token, in: tokens, at: &index)
+                options.safariDirectory = URL(fileURLWithPath: NSString(string: value).expandingTildeInPath)
+            default:
+                throw CLIParseError.unknownCommand(token)
+            }
+
+            index += 1
+        }
+
+        return options
+    }
+
+    private func parseCloudTabsProbeOptions(_ tokens: [String]) throws -> CloudTabsProbeOptions {
+        var options = CloudTabsProbeOptions()
+        var index = 0
+
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
             case "--format":
                 let value = try value(after: token, in: tokens, at: &index)
                 guard let format = OutputFormat(rawValue: value) else {
@@ -123,9 +174,12 @@ public enum CLIHelp {
 
         Usage:
           icloud-cli safari tabs [--source all|current-session|last-session] [--format json|text] [--safari-dir PATH]
+          icloud-cli safari cloud-tabs probe [--format json|text] [--safari-dir PATH]
 
         Commands:
           safari tabs    Read Safari open tabs from local Safari session files.
+          safari cloud-tabs probe
+                         Inspect whether Safari's cross-device tab store is present and readable.
         """
     }
 }

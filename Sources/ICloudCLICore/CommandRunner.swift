@@ -25,6 +25,10 @@ public struct CommandRunner: Sendable {
             case .version:
                 output(CLIHelp.version)
                 return 0
+            case .cloudTabsProbe(let options):
+                let report = CloudTabsProbe(safariDirectory: options.safariDirectory).probe()
+                output(try render(report, format: options.format))
+                return 0
             case .safariTabs(let options):
                 let tabs = try SafariTabsReader(safariDirectory: options.safariDirectory).readTabs(source: options.source)
                 output(try render(tabs, format: options.format))
@@ -51,6 +55,30 @@ public struct CommandRunner: Sendable {
                     return tab.url
                 }
                 .joined(separator: "\n")
+        }
+    }
+
+    public func render(_ report: CloudTabsProbeReport, format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(report), as: UTF8.self)
+        case .text:
+            var lines = [
+                "Cloud tabs store: \(report.databasePath)",
+                "Exists: \(report.exists ? "yes" : "no")",
+                "Readable: \(report.readable ? "yes" : "no")",
+            ]
+            if let sizeBytes = report.sizeBytes {
+                lines.append("Size: \(sizeBytes) bytes")
+            }
+            if let failureMode = report.failureMode {
+                lines.append("Failure mode: \(failureMode)")
+            }
+            lines.append("Recommended default: \(report.recommendedDefault)")
+            lines.append("Permission expectation: \(report.permissionExpectation)")
+            return lines.joined(separator: "\n")
         }
     }
 }

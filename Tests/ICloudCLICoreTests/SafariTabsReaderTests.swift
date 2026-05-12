@@ -141,6 +141,50 @@ import Testing
     #expect(rendered == "Example - https://example.com\nhttps://openclaw.ai")
 }
 
+@Test func cloudTabsProbeReportsMissingStore() throws {
+    let tempRoot = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let report = CloudTabsProbe(safariDirectory: tempRoot).probe()
+
+    #expect(report.exists == false)
+    #expect(report.readable == false)
+    #expect(report.sizeBytes == nil)
+    #expect(report.failureMode == "cloud-tabs-store-missing")
+    #expect(report.localTabSources == ["CurrentSession.plist", "LastSession.plist"])
+    #expect(report.crossDeviceTabSources == ["CloudTabs.db"])
+}
+
+@Test func cloudTabsProbeReportsReadableStoreWithoutReadingRows() throws {
+    let tempRoot = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let databaseURL = tempRoot.appendingPathComponent("CloudTabs.db")
+    try Data("synthetic".utf8).write(to: databaseURL)
+
+    let report = CloudTabsProbe(safariDirectory: tempRoot).probe()
+
+    #expect(report.exists == true)
+    #expect(report.readable == true)
+    #expect(report.sizeBytes == 9)
+    #expect(report.failureMode == nil)
+}
+
+@Test func cloudTabsProbeRejectsDirectoryStore() throws {
+    let tempRoot = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let databaseURL = tempRoot.appendingPathComponent("CloudTabs.db")
+    try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
+
+    let report = CloudTabsProbe(safariDirectory: tempRoot).probe()
+
+    #expect(report.exists == true)
+    #expect(report.readable == false)
+    #expect(report.sizeBytes == nil)
+    #expect(report.failureMode == "cloud-tabs-store-not-regular-file")
+}
+
 private func temporaryDirectory() throws -> URL {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("icloud-cli-tests")
