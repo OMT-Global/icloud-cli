@@ -45,9 +45,11 @@ public struct CloudTabsProbe: Sendable {
         let databaseURL = safariDirectory.appendingPathComponent("CloudTabs.db")
         let databasePath = databaseURL.path
         let fileManager = FileManager.default
-        let exists = fileManager.fileExists(atPath: databasePath)
-        let readable = exists && fileManager.isReadableFile(atPath: databasePath)
-        let sizeBytes = fileSize(at: databaseURL, fileManager: fileManager)
+        var isDirectory: ObjCBool = false
+        let exists = fileManager.fileExists(atPath: databasePath, isDirectory: &isDirectory)
+        let isRegularFile = exists && !isDirectory.boolValue
+        let readable = isRegularFile && fileManager.isReadableFile(atPath: databasePath)
+        let sizeBytes = isRegularFile ? fileSize(at: databaseURL, fileManager: fileManager) : nil
 
         return CloudTabsProbeReport(
             databasePath: databasePath,
@@ -63,7 +65,7 @@ public struct CloudTabsProbe: Sendable {
             ],
             recommendedDefault: "Keep `icloud-cli safari tabs` local-session only; add `--include-cloud` only after schema parsing is fixture-backed.",
             permissionExpectation: "Reading Safari sync storage is expected to require Full Disk Access for the calling terminal or agent process.",
-            failureMode: failureMode(exists: exists, readable: readable)
+            failureMode: failureMode(exists: exists, isRegularFile: isRegularFile, readable: readable)
         )
     }
 
@@ -76,9 +78,12 @@ public struct CloudTabsProbe: Sendable {
         return size.int64Value
     }
 
-    private func failureMode(exists: Bool, readable: Bool) -> String? {
+    private func failureMode(exists: Bool, isRegularFile: Bool, readable: Bool) -> String? {
         if !exists {
             return "cloud-tabs-store-missing"
+        }
+        if !isRegularFile {
+            return "cloud-tabs-store-not-regular-file"
         }
         if !readable {
             return "cloud-tabs-store-unreadable"

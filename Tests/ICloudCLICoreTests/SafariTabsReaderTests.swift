@@ -170,6 +170,21 @@ import Testing
     #expect(report.failureMode == nil)
 }
 
+@Test func cloudTabsProbeRejectsDirectoryStore() throws {
+    let tempRoot = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let databaseURL = tempRoot.appendingPathComponent("CloudTabs.db")
+    try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
+
+    let report = CloudTabsProbe(safariDirectory: tempRoot).probe()
+
+    #expect(report.exists == true)
+    #expect(report.readable == false)
+    #expect(report.sizeBytes == nil)
+    #expect(report.failureMode == "cloud-tabs-store-not-regular-file")
+}
+
 private func temporaryDirectory() throws -> URL {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("icloud-cli-tests")
