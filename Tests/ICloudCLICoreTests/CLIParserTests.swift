@@ -63,3 +63,10 @@ import Testing
     #expect(options.format == .text)
     #expect(options.safariDirectory.path == "/tmp/safari-fixture")
 }
+
+@Test func helpMentionsSafariInventoryCommands() {
+    let help = CLIHelp.root()
+
+    #expect(help.contains("icloud-cli safari tabs"))
+    #expect(help.contains("icloud-cli safari cloud-tabs probe"))
+}
