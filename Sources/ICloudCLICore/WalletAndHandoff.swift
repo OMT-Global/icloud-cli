@@ -73,6 +73,8 @@ public enum HandoffError: Error, LocalizedError, Equatable {
     public var errorDescription: String? { if case .unreadable(let path) = self { return "Handoff cache directory is unreadable: \(path)" }; return nil }
 }
 
+private struct HandoffActivitiesEnvelope: Codable { let activities: [HandoffActivity] }
+
 public struct HandoffActivityReader: Sendable {
     public let handoffDirectory: URL
     public init(handoffDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/com.apple.handoff")) { self.handoffDirectory = handoffDirectory }
@@ -87,8 +89,14 @@ public struct HandoffActivityReader: Sendable {
     }
 
     private func readActivities(from url: URL) -> [HandoffActivity] {
-        if url.pathExtension == "json", let data = try? Data(contentsOf: url), let object = try? JSONSerialization.jsonObject(with: data) { return parseActivities(object) }
-        if let object = NSDictionary(contentsOf: url) { return parseActivities(object) }
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        if url.pathExtension == "json" {
+            let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+            if let wrapped = try? decoder.decode(HandoffActivitiesEnvelope.self, from: data) { return wrapped.activities }
+            if let array = try? decoder.decode([HandoffActivity].self, from: data) { return array }
+            if let object = try? JSONSerialization.jsonObject(with: data) { return parseActivities(object) }
+        }
+        if let object = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) { return parseActivities(object) }
         return []
     }
 
