@@ -36,6 +36,7 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | `icloud-cli safari reading-list` | `~/Library/Safari/Bookmarks.plist` Reading List entries | Terminal or calling process may need Full Disk Access to read Safari metadata files. |
 | `icloud-cli safari frequently-visited` | `~/Library/Safari/TopSites.plist` or compatible frequently visited site cache | Terminal or calling process may need Full Disk Access to read Safari metadata files. |
 | Future `icloud-cli safari tabs --include-cloud` | Safari iCloud sync storage, likely under `~/Library/Safari` | Full Disk Access is expected; schema and safety constraints must be documented before implementation. |
+| `icloud-cli shortcuts list` | `~/Library/Shortcuts/*.shortcut` metadata including shortcut names, action counts, dates, and input capability | Terminal or calling process may need access to the Shortcuts library. The command is read-only and never executes shortcuts. |
 | Future iCloud settings commands | Local Apple account or system settings state | Document per-command read surfaces before implementation; do not require Automation unless a command actually controls an app. |
 
 Automation permission is not required for the current Safari tab reader because it reads local files. Any future command that controls Safari, System Settings, or another app must document the Automation prompt and failure mode before merge.
@@ -59,3 +60,8 @@ This keeps static privacy checks and Swift tests ahead of the standalone build.
 ## iCloud Drive inventory
 
 `icloud-cli drive list` and `icloud-cli drive containers` read filesystem metadata under `~/Library/Mobile Documents` only. They do not read file contents. JSON output includes real paths by design for direct operator use; logs and status summaries should redact the home directory. Evicted `.icloud` stubs are reported as metadata with `sizeBytes: null`.
+
+
+## Shortcuts inventory
+
+`icloud-cli shortcuts list` reads local Shortcuts metadata only. It does not execute shortcuts, request Automation permission, or read action payload contents beyond counting action entries in the shortcut plist. Shortcut names are operator-sensitive metadata; logs and status summaries should avoid dumping full JSON unless explicitly requested.

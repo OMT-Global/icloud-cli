@@ -1,14 +1,14 @@
 # Issue work plan
 
-Reviewed the remaining open issues after the Safari metadata PR.
+Reviewed the remaining open issues after the Drive metadata PR.
 
 ## Groups
 
-- iCloud Drive filesystem metadata: #19 Drive file inventory and #32 app iCloud container inventory.
-- Local app/private databases: #21 Notes, #24 Reminders, #28 Contacts.
-- Device/availability state: #29 Focus, #30 Handoff, #31 devices.
-- High-sensitivity activity/content: #25 Safari history, #26 Messages, #33 Maps, #34 News, #35 Wallet.
+- Ready medium-risk data commands: #21 Notes titles, #22 storage quota status, #23 cache/watch mode.
+- Local automation metadata: #27 Shortcuts inventory.
+- High-sensitivity content/activity surfaces: #18 Photos, #25 Safari history, #26 Messages, #33 Maps, #34 News, #35 Wallet.
+- Device/status surfaces: #29 Focus, #30 Handoff, #31 connected devices.
 
 ## Selected group
 
-Selected the iCloud Drive filesystem metadata group (#19 and #32). It is coherent, testable with synthetic directories, and lower-risk than message/history/location surfaces because it reads metadata only and never file contents.
+Selected #27 Shortcuts inventory as the next low/medium-risk pass. It is coherent, read-only, testable with synthetic `.shortcut` bundles, and avoids executing Shortcuts or reading private content databases.

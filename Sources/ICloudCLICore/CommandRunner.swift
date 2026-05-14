@@ -53,6 +53,10 @@ public struct CommandRunner: Sendable {
                 let tabs = try SafariTabsReader(safariDirectory: options.safariDirectory).readTabs(source: options.source)
                 output(try render(tabs, format: options.format))
                 return 0
+            case .shortcutsList(let options):
+                let shortcuts = try ShortcutsInventoryReader(shortcutsDirectory: options.shortcutsDirectory).listShortcuts(namePattern: options.namePattern)
+                output(try render(shortcuts, format: options.format))
+                return 0
             }
         } catch {
             errorOutput(error.localizedDescription)
@@ -148,6 +152,21 @@ public struct CommandRunner: Sendable {
             return containers.map { container in
                 let size = container.sizeBytes.map { "\($0) bytes" } ?? "unknown size"
                 return "\(container.displayName) [\(container.bundleId)] - \(size)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ shortcuts: [ShortcutEntry], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(shortcuts), as: UTF8.self)
+        case .text:
+            return shortcuts.map { shortcut in
+                let input = shortcut.acceptsInput ? "accepts input" : "no input"
+                return "\(shortcut.name) - \(shortcut.actionCount) actions, \(input)"
             }.joined(separator: "\n")
         }
     }

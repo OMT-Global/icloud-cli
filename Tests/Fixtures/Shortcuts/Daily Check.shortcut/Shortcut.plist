@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>WFWorkflowName</key><string>Daily Check</string>
+  <key>WFWorkflowCreationDate</key><date>2026-01-02T03:04:05Z</date>
+  <key>WFWorkflowModificationDate</key><date>2026-01-03T04:05:06Z</date>
+  <key>WFWorkflowActions</key>
+  <array>
+    <dict><key>WFWorkflowActionIdentifier</key><string>is.workflow.actions.gettext</string></dict>
+    <dict><key>WFWorkflowActionIdentifier</key><string>is.workflow.actions.showresult</string></dict>
+  </array>
+  <key>WFWorkflowInputContentItemClasses</key>
+  <array><string>WFStringContentItem</string></array>
+</dict>
+</plist>
