@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Accounts</key>
+  <array>
+    <dict>
+      <key>AccountID</key><string>operator@example.com</string>
+      <key>QuotaInfo</key>
+      <dict>
+        <key>accountEmail</key><string>operator@example.com</string>
+        <key>totalBytes</key><integer>200000000000</integer>
+        <key>usedBytes</key><integer>75000000000</integer>
+        <key>lastRefreshedAt</key><date>2026-05-14T10:00:00Z</date>
+      </dict>
+      <key>Devices</key>
+      <array>
+        <dict>
+          <key>name</key><string>Example Mac</string>
+          <key>model</key><string>MacBook Pro</string>
+          <key>osVersion</key><string>15.5</string>
+          <key>isCurrentDevice</key><true/>
+          <key>lastSeenAt</key><date>2026-05-14T09:30:00Z</date>
+        </dict>
+        <dict>
+          <key>deviceName</key><string>Example Phone</string>
+          <key>deviceModel</key><string>iPhone</string>
+          <key>systemVersion</key><string>18.4</string>
+        </dict>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>modes</key>
+  <array>
+    <dict>
+      <key>name</key><string>Work</string>
+      <key>active</key><true/>
+      <key>startedAt</key><date>2026-05-14T08:00:00Z</date>
+      <key>endsAt</key><date>2026-05-14T18:00:00Z</date>
+    </dict>
+    <dict>
+      <key>name</key><string>Sleep</string>
+      <key>active</key><false/>
+    </dict>
+  </array>
+</dict>
+</plist>

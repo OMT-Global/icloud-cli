@@ -37,6 +37,9 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | `icloud-cli safari frequently-visited` | `~/Library/Safari/TopSites.plist` or compatible frequently visited site cache | Terminal or calling process may need Full Disk Access to read Safari metadata files. |
 | Future `icloud-cli safari tabs --include-cloud` | Safari iCloud sync storage, likely under `~/Library/Safari` | Full Disk Access is expected; schema and safety constraints must be documented before implementation. |
 | `icloud-cli shortcuts list` | `~/Library/Shortcuts/*.shortcut` metadata including shortcut names, action counts, dates, and input capability | Terminal or calling process may need access to the Shortcuts library. The command is read-only and never executes shortcuts. |
+| `icloud-cli storage status` | Locally cached iCloud quota metadata, currently `~/Library/Preferences/MobileMeAccounts.plist` when available | Normal user file access. The command is read-only and makes no live network requests. Account email is direct operator output only; logs should redact to `user@…`. |
+| `icloud-cli focus status` | Local Focus / Do Not Disturb preference plists under `~/Library/DoNotDisturb` | Normal user file access. The command is read-only and does not modify Focus state. |
+| `icloud-cli devices list` | Locally cached iCloud registered-device metadata, currently `~/Library/Preferences/MobileMeAccounts.plist` when available | Normal user file access. Device names may be personally identifying; logs should report only count/model summary. |
 | Future iCloud settings commands | Local Apple account or system settings state | Document per-command read surfaces before implementation; do not require Automation unless a command actually controls an app. |
 
 Automation permission is not required for the current Safari tab reader because it reads local files. Any future command that controls Safari, System Settings, or another app must document the Automation prompt and failure mode before merge.
@@ -65,3 +68,8 @@ This keeps static privacy checks and Swift tests ahead of the standalone build.
 ## Shortcuts inventory
 
 `icloud-cli shortcuts list` reads local Shortcuts metadata only. It does not execute shortcuts, request Automation permission, or read action payload contents beyond counting action entries in the shortcut plist. Shortcut names are operator-sensitive metadata; logs and status summaries should avoid dumping full JSON unless explicitly requested.
+
+
+## Local iCloud status surfaces
+
+`icloud-cli storage status`, `icloud-cli focus status`, and `icloud-cli devices list` read cached local metadata only. They do not contact iCloud, mutate system settings, or require Automation permission. Storage and devices currently use the local MobileMe/iCloud account preferences cache when present; Focus reads the local Do Not Disturb preference directory. Direct command output may include the real account email and device names because the operator requested them. OpenClaw logs and PR summaries should redact account emails and avoid listing device names unless explicitly requested.

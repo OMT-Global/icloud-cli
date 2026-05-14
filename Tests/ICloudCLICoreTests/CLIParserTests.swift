@@ -145,3 +145,34 @@ import Testing
     #expect(options.format == .text)
     #expect(options.shortcutsDirectory.path == "/tmp/shortcuts")
 }
+
+
+@Test func parsesStorageStatusCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "storage", "status", "--format", "text", "--cache-file", "/tmp/mobileme.plist"])
+    guard case .storageStatus(let options) = command else {
+        Issue.record("Expected storage status command")
+        return
+    }
+    #expect(options.format == .text)
+    #expect(options.cacheFile.path == "/tmp/mobileme.plist")
+}
+
+@Test func parsesFocusStatusCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "focus", "status", "--format", "json", "--focus-dir", "/tmp/focus"])
+    guard case .focusStatus(let options) = command else {
+        Issue.record("Expected focus status command")
+        return
+    }
+    #expect(options.format == .json)
+    #expect(options.focusDirectory.path == "/tmp/focus")
+}
+
+@Test func parsesDevicesListCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "devices", "list", "--format", "text", "--cache-file", "/tmp/mobileme.plist"])
+    guard case .devicesList(let options) = command else {
+        Issue.record("Expected devices list command")
+        return
+    }
+    #expect(options.format == .text)
+    #expect(options.cacheFile.path == "/tmp/mobileme.plist")
+}
