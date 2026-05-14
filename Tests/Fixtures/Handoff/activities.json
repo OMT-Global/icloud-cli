@@ -1,0 +1,20 @@
+{
+  "activities": [
+    {
+      "deviceName": "Example iPhone",
+      "appBundleId": "com.apple.mobilesafari",
+      "appName": "Safari",
+      "activityType": "NSUserActivityTypeBrowsingWeb",
+      "title": "Example Page",
+      "url": "https://example.com/context",
+      "updatedAt": "2026-05-14T12:00:00Z"
+    },
+    {
+      "deviceName": "Example iPad",
+      "appBundleId": "com.apple.Notes",
+      "appName": "Notes",
+      "activityType": "com.apple.notes.activity",
+      "updatedAt": "2026-05-14T11:00:00Z"
+    }
+  ]
+}

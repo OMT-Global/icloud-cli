@@ -40,6 +40,8 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | `icloud-cli storage status` | Locally cached iCloud quota metadata, currently `~/Library/Preferences/MobileMeAccounts.plist` when available | Normal user file access. The command is read-only and makes no live network requests. Account email is direct operator output only; logs should redact to `user@…`. |
 | `icloud-cli focus status` | Local Focus / Do Not Disturb preference plists under `~/Library/DoNotDisturb` | Normal user file access. The command is read-only and does not modify Focus state. |
 | `icloud-cli devices list` | Locally cached iCloud registered-device metadata, currently `~/Library/Preferences/MobileMeAccounts.plist` when available | Normal user file access. Device names may be personally identifying; logs should report only count/model summary. |
+| `icloud-cli wallet passes` | Local Wallet pass bundles under `~/Library/Passes`, reading pass manifests only | Normal user file access or Full Disk Access depending on macOS privacy posture. The command is read-only, emits no barcode or payment credential payloads, and logs should omit serial numbers. |
+| `icloud-cli handoff list` | Local Handoff cache files under `~/Library/Application Support/com.apple.handoff` | Normal user file access. The command is read-only and does not use Bluetooth, network, or Continuity APIs. Titles and URLs are sensitive and should be redacted in logs. |
 | Future iCloud settings commands | Local Apple account or system settings state | Document per-command read surfaces before implementation; do not require Automation unless a command actually controls an app. |
 
 Automation permission is not required for the current Safari tab reader because it reads local files. Any future command that controls Safari, System Settings, or another app must document the Automation prompt and failure mode before merge.
@@ -73,3 +75,10 @@ This keeps static privacy checks and Swift tests ahead of the standalone build.
 ## Local iCloud status surfaces
 
 `icloud-cli storage status`, `icloud-cli focus status`, and `icloud-cli devices list` read cached local metadata only. They do not contact iCloud, mutate system settings, or require Automation permission. Storage and devices currently use the local MobileMe/iCloud account preferences cache when present; Focus reads the local Do Not Disturb preference directory. Direct command output may include the real account email and device names because the operator requested them. OpenClaw logs and PR summaries should redact account emails and avoid listing device names unless explicitly requested.
+
+
+## Wallet and Handoff inventory
+
+`icloud-cli wallet passes` reads local pass manifests from `~/Library/Passes` and emits only pass metadata: type, description, organization, relevant/expiration dates, and serial number. It intentionally does not emit barcode payloads, NFC/payment material, images, signatures, or full ZIP contents. Serial numbers are identifiers and should be hidden from OpenClaw status summaries unless the operator explicitly requests raw command output.
+
+`icloud-cli handoff list` reads cached local Handoff activity metadata from `~/Library/Application Support/com.apple.handoff`. The cache schema is treated as best-effort and may vary by macOS release, so the reader accepts JSON/plist fixtures and common key aliases rather than promising a private Apple schema. Activity titles and URLs are sensitive cross-device context; logs should summarize by app/device/count only.

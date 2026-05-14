@@ -1,0 +1,7 @@
+{
+  "passType": "coupon",
+  "description": "Synthetic coupon",
+  "organizationName": "Example Store",
+  "expirationDate": "2020-01-01T00:00:00Z",
+  "serialNumber": "SYNTH-COUPON-001"
+}
