@@ -22,7 +22,7 @@ while IFS= read -r -d '' file; do
         ;;
       http://example.com/*|https://example.com/*|http://example.org/*|https://example.org/*|http://example.net/*|https://example.net/*)
         ;;
-      https://www.apple.com/DTDs/PropertyList-1.0.dtd)
+      http://www.apple.com/DTDs/PropertyList-1.0.dtd|https://www.apple.com/DTDs/PropertyList-1.0.dtd)
         ;;
       *)
         echo "Non-synthetic fixture URL found in $file: $url" >&2
