@@ -39,6 +39,32 @@ public struct SafariFrequentlyVisitedOptions: Equatable, Sendable {
     }
 }
 
+public struct DriveListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var rootDirectory: URL
+    public var path: String?
+    public var depth: Int
+
+    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2) {
+        self.format = format
+        self.rootDirectory = rootDirectory
+        self.path = path
+        self.depth = depth
+    }
+}
+
+public struct DriveContainersOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var rootDirectory: URL
+    public var sortBy: DriveSortKey
+
+    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), sortBy: DriveSortKey = .name) {
+        self.format = format
+        self.rootDirectory = rootDirectory
+        self.sortBy = sortBy
+    }
+}
+
 public struct CloudTabsProbeOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var safariDirectory: URL
@@ -51,6 +77,8 @@ public struct CloudTabsProbeOptions: Equatable, Sendable {
 
 public enum CLICommand: Equatable, Sendable {
     case cloudTabsProbe(CloudTabsProbeOptions)
+    case driveContainers(DriveContainersOptions)
+    case driveList(DriveListOptions)
     case safariBookmarks(SafariBookmarksOptions)
     case safariFrequentlyVisited(SafariFrequentlyVisitedOptions)
     case safariReadingList(SafariBookmarksOptions)
@@ -83,8 +111,17 @@ public struct CLIParser: Sendable {
         if tokens.isEmpty || tokens.contains("--help") || tokens.contains("-h") { return .help }
         if tokens == ["--version"] || tokens == ["-V"] { return .version }
 
-        guard tokens.first == "safari" else { throw CLIParseError.unknownCommand(tokens.first ?? "") }
-        tokens.removeFirst()
+        let topCommand = tokens.removeFirst()
+        if topCommand == "drive" {
+            guard let driveCommand = tokens.first else { throw CLIParseError.unknownCommand("drive") }
+            tokens.removeFirst()
+            switch driveCommand {
+            case "list": return .driveList(try parseDriveListOptions(tokens))
+            case "containers": return .driveContainers(try parseDriveContainersOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["drive", driveCommand] + tokens).joined(separator: " "))
+            }
+        }
+        guard topCommand == "safari" else { throw CLIParseError.unknownCommand(topCommand) }
         guard let safariCommand = tokens.first else { throw CLIParseError.unknownCommand((["safari"] + tokens).joined(separator: " ")) }
         tokens.removeFirst()
 
@@ -152,6 +189,43 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseDriveListOptions(_ tokens: [String]) throws -> DriveListOptions {
+        var options = DriveListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--icloud-root": options.rootDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--path": options.path = try value(after: token, in: tokens, at: &index)
+            case "--depth":
+                let rawValue = try value(after: token, in: tokens, at: &index)
+                guard let depth = Int(rawValue), depth >= 0 else { throw CLIParseError.missingValue(token) }
+                options.depth = depth
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseDriveContainersOptions(_ tokens: [String]) throws -> DriveContainersOptions {
+        var options = DriveContainersOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--icloud-root": options.rootDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--sort-by":
+                let rawValue = try value(after: token, in: tokens, at: &index)
+                guard let sortBy = DriveSortKey(rawValue: rawValue) else { throw CLIParseError.missingValue(token) }
+                options.sortBy = sortBy
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseCloudTabsProbeOptions(_ tokens: [String]) throws -> CloudTabsProbeOptions {
         var options = CloudTabsProbeOptions(); var index = 0
         while index < tokens.count {
@@ -192,6 +266,8 @@ public enum CLIHelp {
 icloud-cli \(version)
 
 Usage:
+  icloud-cli drive list [--path PATH] [--depth N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
   icloud-cli safari tabs [--source all|current-session|last-session] [--format json|text] [--safari-dir PATH]
   icloud-cli safari bookmarks [--format json|text] [--safari-dir PATH]
   icloud-cli safari reading-list [--format json|text] [--safari-dir PATH]
@@ -199,6 +275,9 @@ Usage:
   icloud-cli safari cloud-tabs probe [--format json|text] [--safari-dir PATH]
 
 Commands:
+  drive list     List files under the local iCloud Drive root without reading file contents.
+  drive containers
+                 List top-level iCloud app containers.
   safari tabs    Read Safari open tabs from local Safari session files.
   safari bookmarks
                  Read Safari bookmarks from Bookmarks.plist.
