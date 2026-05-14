@@ -94,7 +94,11 @@ public struct HandoffActivityReader: Sendable {
 
     private func parseActivities(_ value: Any) -> [HandoffActivity] {
         if let array = value as? [Any] { return array.flatMap(parseActivities) }
-        if let dict = value as? NSDictionary { return parseActivities(dict as! [String: Any]) }
+        if let dict = value as? NSDictionary {
+            var swiftDict: [String: Any] = [:]
+            for (key, child) in dict { if let key = key as? String { swiftDict[key] = child } }
+            return parseActivities(swiftDict)
+        }
         if let dict = value as? [String: Any] {
             if let nested = dict["activities"] ?? dict["items"] { return parseActivities(nested) }
             guard let device = stringValue(dict["deviceName"] ?? dict["device"]),
