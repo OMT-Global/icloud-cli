@@ -8,6 +8,7 @@
       <key>AccountID</key><string>operator@example.com</string>
       <key>QuotaInfo</key>
       <dict>
+        <key>accountEmail</key><string>operator@example.com</string>
         <key>totalBytes</key><integer>200000000000</integer>
         <key>usedBytes</key><integer>75000000000</integer>
         <key>lastRefreshedAt</key><date>2026-05-14T10:00:00Z</date>
