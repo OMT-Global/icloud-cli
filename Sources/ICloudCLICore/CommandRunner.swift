@@ -45,6 +45,10 @@ public struct CommandRunner: Sendable {
                 let status = try FocusStatusReader(focusDirectory: options.focusDirectory).readStatus()
                 output(try render(status, format: options.format))
                 return 0
+            case .handoffList(let options):
+                let activities = try HandoffActivityReader(handoffDirectory: options.handoffDirectory).listActivities(limit: options.limit)
+                output(try render(activities, format: options.format))
+                return 0
             case .safariBookmarks(let options):
                 let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
                 output(try render(bookmarks, format: options.format))
@@ -68,6 +72,10 @@ public struct CommandRunner: Sendable {
             case .storageStatus(let options):
                 let status = try ICloudStorageStatusReader(cacheFile: options.cacheFile).readStatus()
                 output(try render(status, format: options.format))
+                return 0
+            case .walletPasses(let options):
+                let passes = try WalletPassesReader(passesDirectory: options.passesDirectory).listPasses(type: options.type, activeOnly: options.activeOnly)
+                output(try render(passes, format: options.format))
                 return 0
             }
         } catch {
@@ -229,6 +237,36 @@ public struct CommandRunner: Sendable {
                 let current = device.isCurrentDevice ? " current" : ""
                 let os = device.osVersion.map { " (\($0))" } ?? ""
                 return "\(device.name) - \(device.model)\(os)\(current)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ passes: [WalletPass], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(passes), as: UTF8.self)
+        case .text:
+            return passes.map { pass in
+                let date = pass.relevantDate.map { ISO8601DateFormatter().string(from: $0) } ?? "no relevant date"
+                return "\(pass.passType.rawValue): \(pass.organizationName) - \(pass.description) (\(date))"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ activities: [HandoffActivity], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(activities), as: UTF8.self)
+        case .text:
+            return activities.map { activity in
+                let title = activity.title.map { " - \($0)" } ?? ""
+                return "\(activity.deviceName): \(activity.appName) [\(activity.activityType)]\(title)"
             }.joined(separator: "\n")
         }
     }

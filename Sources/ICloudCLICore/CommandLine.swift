@@ -107,6 +107,32 @@ public struct DevicesListOptions: Equatable, Sendable {
     }
 }
 
+public struct WalletPassesOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var passesDirectory: URL
+    public var type: WalletPassType?
+    public var activeOnly: Bool
+
+    public init(format: OutputFormat = .json, passesDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Passes"), type: WalletPassType? = nil, activeOnly: Bool = false) {
+        self.format = format
+        self.passesDirectory = passesDirectory
+        self.type = type
+        self.activeOnly = activeOnly
+    }
+}
+
+public struct HandoffListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var handoffDirectory: URL
+    public var limit: Int
+
+    public init(format: OutputFormat = .json, handoffDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/com.apple.handoff"), limit: Int = 10) {
+        self.format = format
+        self.handoffDirectory = handoffDirectory
+        self.limit = limit
+    }
+}
+
 public struct CloudTabsProbeOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var safariDirectory: URL
@@ -123,12 +149,14 @@ public enum CLICommand: Equatable, Sendable {
     case driveContainers(DriveContainersOptions)
     case driveList(DriveListOptions)
     case focusStatus(FocusStatusOptions)
+    case handoffList(HandoffListOptions)
     case safariBookmarks(SafariBookmarksOptions)
     case safariFrequentlyVisited(SafariFrequentlyVisitedOptions)
     case safariReadingList(SafariBookmarksOptions)
     case safariTabs(SafariTabsOptions)
     case shortcutsList(ShortcutsListOptions)
     case storageStatus(StorageStatusOptions)
+    case walletPasses(WalletPassesOptions)
     case help
     case version
 }
@@ -138,6 +166,7 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
     case missingValue(String)
     case invalidSource(String)
     case invalidFormat(String)
+    case invalidPassType(String)
 
     public var errorDescription: String? {
         switch self {
@@ -145,6 +174,7 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
         case .missingValue(let option): return "Missing value for \(option)"
         case .invalidSource(let source): return "Invalid Safari tabs source: \(source)"
         case .invalidFormat(let format): return "Invalid output format: \(format)"
+        case .invalidPassType(let type): return "Invalid wallet pass type: \(type)"
         }
     }
 }
@@ -172,6 +202,16 @@ public struct CLIParser: Sendable {
             guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["devices"] + tokens).joined(separator: " ")) }
             tokens.removeFirst()
             return .devicesList(try parseDevicesListOptions(tokens))
+        }
+        if topCommand == "wallet" {
+            guard tokens.first == "passes" else { throw CLIParseError.unknownCommand((["wallet"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .walletPasses(try parseWalletPassesOptions(tokens))
+        }
+        if topCommand == "handoff" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["handoff"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .handoffList(try parseHandoffListOptions(tokens))
         }
         if topCommand == "drive" {
             guard let driveCommand = tokens.first else { throw CLIParseError.unknownCommand("drive") }
@@ -349,6 +389,40 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseWalletPassesOptions(_ tokens: [String]) throws -> WalletPassesOptions {
+        var options = WalletPassesOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--passes-dir": options.passesDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--type":
+                let raw = try value(after: token, in: tokens, at: &index)
+                guard let type = WalletPassType(rawValue: raw) else { throw CLIParseError.invalidPassType(raw) }
+                options.type = type
+            case "--active-only": options.activeOnly = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseHandoffListOptions(_ tokens: [String]) throws -> HandoffListOptions {
+        var options = HandoffListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--handoff-dir": options.handoffDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseCloudTabsProbeOptions(_ tokens: [String]) throws -> CloudTabsProbeOptions {
         var options = CloudTabsProbeOptions(); var index = 0
         while index < tokens.count {
@@ -392,6 +466,8 @@ Usage:
   icloud-cli storage status [--format json|text] [--cache-file PATH]
   icloud-cli focus status [--format json|text] [--focus-dir PATH]
   icloud-cli devices list [--format json|text] [--cache-file PATH]
+  icloud-cli wallet passes [--type PASS_TYPE] [--active-only] [--format json|text] [--passes-dir PATH]
+  icloud-cli handoff list [--limit N] [--format json|text] [--handoff-dir PATH]
   icloud-cli drive list [--path PATH] [--depth N] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
@@ -405,6 +481,8 @@ Commands:
   storage status Report locally cached iCloud storage quota.
   focus status   Report locally cached Focus / Do Not Disturb status.
   devices list   List locally cached iCloud registered devices.
+  wallet passes  List local Wallet pass metadata without barcode or payment credential data.
+  handoff list   List local Handoff recent-activity metadata.
   drive list     List files under the local iCloud Drive root without reading file contents.
   drive containers
                  List top-level iCloud app containers.

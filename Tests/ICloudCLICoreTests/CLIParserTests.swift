@@ -176,3 +176,27 @@ import Testing
     #expect(options.format == .text)
     #expect(options.cacheFile.path == "/tmp/mobileme.plist")
 }
+
+
+@Test func parsesWalletPassesCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "wallet", "passes", "--type", "boardingPass", "--active-only", "--passes-dir", "/tmp/passes", "--format", "text"])
+    guard case .walletPasses(let options) = command else {
+        Issue.record("Expected wallet passes command")
+        return
+    }
+    #expect(options.type == .boardingPass)
+    #expect(options.activeOnly == true)
+    #expect(options.passesDirectory.path == "/tmp/passes")
+    #expect(options.format == .text)
+}
+
+@Test func parsesHandoffListCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "handoff", "list", "--limit", "5", "--handoff-dir", "/tmp/handoff", "--format", "json"])
+    guard case .handoffList(let options) = command else {
+        Issue.record("Expected handoff list command")
+        return
+    }
+    #expect(options.limit == 5)
+    #expect(options.handoffDirectory.path == "/tmp/handoff")
+    #expect(options.format == .json)
+}
