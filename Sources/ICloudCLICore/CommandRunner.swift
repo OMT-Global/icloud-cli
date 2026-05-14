@@ -29,6 +29,14 @@ public struct CommandRunner: Sendable {
                 let report = CloudTabsProbe(safariDirectory: options.safariDirectory).probe()
                 output(try render(report, format: options.format))
                 return 0
+            case .driveContainers(let options):
+                let containers = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listContainers(sortBy: options.sortBy)
+                output(try render(containers, format: options.format))
+                return 0
+            case .driveList(let options):
+                let files = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listFiles(path: options.path, depth: options.depth)
+                output(try render(files, format: options.format))
+                return 0
             case .safariBookmarks(let options):
                 let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
                 output(try render(bookmarks, format: options.format))
@@ -110,6 +118,36 @@ public struct CommandRunner: Sendable {
             return sites.map { site in
                 if let title = site.title { return "#\(site.rank) \(title) - \(site.url)" }
                 return "#\(site.rank) \(site.url)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ files: [ICloudDriveFile], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(files), as: UTF8.self)
+        case .text:
+            return files.map { file in
+                let size = file.sizeBytes.map { "\($0) bytes" } ?? "evicted"
+                return "[\(file.iCloudStatus.rawValue)] \(file.path) (\(size))"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ containers: [ICloudDriveContainer], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(containers), as: UTF8.self)
+        case .text:
+            return containers.map { container in
+                let size = container.sizeBytes.map { "\($0) bytes" } ?? "unknown size"
+                return "\(container.displayName) [\(container.bundleId)] - \(size)"
             }.joined(separator: "\n")
         }
     }

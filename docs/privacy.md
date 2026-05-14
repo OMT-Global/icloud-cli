@@ -54,3 +54,8 @@ swift build
 ```
 
 This keeps static privacy checks and Swift tests ahead of the standalone build.
+
+
+## iCloud Drive inventory
+
+`icloud-cli drive list` and `icloud-cli drive containers` read filesystem metadata under `~/Library/Mobile Documents` only. They do not read file contents. JSON output includes real paths by design for direct operator use; logs and status summaries should redact the home directory. Evicted `.icloud` stubs are reported as metadata with `sizeBytes: null`.

@@ -105,3 +105,30 @@ import Testing
     #expect(options.limit == 5)
     #expect(options.format == .text)
 }
+
+@Test func parsesDriveListCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "drive", "list", "--path", "com~apple~CloudDocs", "--depth", "1", "--format", "text", "--icloud-root", "/tmp/mobile-documents"])
+
+    guard case .driveList(let options) = command else {
+        Issue.record("Expected drive list command")
+        return
+    }
+
+    #expect(options.path == "com~apple~CloudDocs")
+    #expect(options.depth == 1)
+    #expect(options.format == .text)
+    #expect(options.rootDirectory.path == "/tmp/mobile-documents")
+}
+
+@Test func parsesDriveContainersCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "drive", "containers", "--sort-by", "size", "--format", "json", "--icloud-root", "/tmp/mobile-documents"])
+
+    guard case .driveContainers(let options) = command else {
+        Issue.record("Expected drive containers command")
+        return
+    }
+
+    #expect(options.sortBy == .size)
+    #expect(options.format == .json)
+    #expect(options.rootDirectory.path == "/tmp/mobile-documents")
+}

@@ -1,0 +1,155 @@
+import Foundation
+
+public enum DriveSortKey: String, Sendable {
+    case name
+    case size
+    case modified
+}
+
+public enum ICloudFileStatus: String, Codable, Equatable, Sendable {
+    case downloaded
+    case evicted
+    case uploading
+    case unknown
+}
+
+public struct ICloudDriveFile: Codable, Equatable, Sendable {
+    public let path: String
+    public let name: String
+    public let sizeBytes: Int64?
+    public let modifiedAt: Date?
+    public let iCloudStatus: ICloudFileStatus
+    public let appContainer: String
+}
+
+public struct ICloudDriveContainer: Codable, Equatable, Sendable {
+    public let bundleId: String
+    public let displayName: String
+    public let sizeBytes: Int64?
+    public let modifiedAt: Date?
+}
+
+public enum DriveInventoryError: Error, LocalizedError, Equatable {
+    case missingRoot(String)
+    case invalidPath(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingRoot(let path): return "iCloud Drive root not available: \(path)"
+        case .invalidPath(let path): return "Path is outside the iCloud Drive root: \(path)"
+        }
+    }
+}
+
+public struct ICloudDriveInventoryReader: Sendable {
+    public let rootDirectory: URL
+    public init(rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents")) {
+        self.rootDirectory = rootDirectory.standardizedFileURL
+    }
+
+    public func listFiles(path requestedPath: String? = nil, depth: Int = 2) throws -> [ICloudDriveFile] {
+        guard FileManager.default.fileExists(atPath: rootDirectory.path) else { throw DriveInventoryError.missingRoot(rootDirectory.path) }
+        let startURL = try scopedURL(for: requestedPath)
+        let maxDepth = max(0, depth)
+        var result: [ICloudDriveFile] = []
+        try walkFiles(at: startURL, currentDepth: 0, maxDepth: maxDepth, into: &result)
+        return result.sorted { lhs, rhs in lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending }
+    }
+
+    public func listContainers(sortBy: DriveSortKey = .name) throws -> [ICloudDriveContainer] {
+        guard FileManager.default.fileExists(atPath: rootDirectory.path) else { throw DriveInventoryError.missingRoot(rootDirectory.path) }
+        let children = try FileManager.default.contentsOfDirectory(at: rootDirectory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+        var containers: [ICloudDriveContainer] = []
+        for child in children {
+            let values = try? child.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { continue }
+            let stats = directoryStats(child)
+            containers.append(ICloudDriveContainer(bundleId: child.lastPathComponent, displayName: displayName(for: child.lastPathComponent), sizeBytes: stats.sizeBytes, modifiedAt: stats.modifiedAt))
+        }
+        return sort(containers, by: sortBy)
+    }
+
+    private func scopedURL(for requestedPath: String?) throws -> URL {
+        guard let requestedPath, !requestedPath.isEmpty else { return rootDirectory }
+        let url: URL
+        if requestedPath.hasPrefix("/") { url = URL(fileURLWithPath: requestedPath) }
+        else { url = rootDirectory.appendingPathComponent(requestedPath) }
+        let standardized = url.standardizedFileURL
+        guard standardized.path == rootDirectory.path || standardized.path.hasPrefix(rootDirectory.path + "/") else { throw DriveInventoryError.invalidPath(standardized.path) }
+        return standardized
+    }
+
+    private func walkFiles(at directory: URL, currentDepth: Int, maxDepth: Int, into result: inout [ICloudDriveFile]) throws {
+        let children = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey], options: [])
+        for child in children {
+            let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            if values?.isDirectory == true {
+                if currentDepth < maxDepth { try walkFiles(at: child, currentDepth: currentDepth + 1, maxDepth: maxDepth, into: &result) }
+                continue
+            }
+            result.append(fileEntry(for: child, values: values))
+        }
+    }
+
+    private func fileEntry(for url: URL, values: URLResourceValues?) -> ICloudDriveFile {
+        let status = status(for: url)
+        return ICloudDriveFile(path: relativePath(for: url), name: displayFileName(for: url), sizeBytes: status == .evicted ? nil : values?.fileSize.map(Int64.init), modifiedAt: values?.contentModificationDate, iCloudStatus: status, appContainer: appContainer(for: url))
+    }
+
+    private func status(for url: URL) -> ICloudFileStatus {
+        let name = url.lastPathComponent
+        if name.hasPrefix(".") && name.hasSuffix(".icloud") { return .evicted }
+        if name.hasSuffix(".icloud") { return .uploading }
+        return .downloaded
+    }
+
+    private func displayFileName(for url: URL) -> String {
+        let name = url.lastPathComponent
+        if name.hasPrefix(".") && name.hasSuffix(".icloud") {
+            let start = name.index(after: name.startIndex)
+            let end = name.index(name.endIndex, offsetBy: -".icloud".count)
+            return String(name[start..<end])
+        }
+        return name
+    }
+
+    private func relativePath(for url: URL) -> String {
+        let path = url.standardizedFileURL.path
+        if path == rootDirectory.path { return "." }
+        return String(path.dropFirst(rootDirectory.path.count + 1))
+    }
+
+    private func appContainer(for url: URL) -> String {
+        let relative = relativePath(for: url)
+        return relative.split(separator: "/").first.map(String.init) ?? ""
+    }
+
+    private func directoryStats(_ directory: URL) -> (sizeBytes: Int64?, modifiedAt: Date?) {
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey], options: []) else { return (nil, nil) }
+        var size: Int64 = 0
+        var sawFile = false
+        var latest: Date?
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            if let modified = values?.contentModificationDate, latest.map({ modified > $0 }) ?? true { latest = modified }
+            if values?.isDirectory == true { continue }
+            if status(for: url) == .evicted { continue }
+            if let fileSize = values?.fileSize { size += Int64(fileSize); sawFile = true }
+        }
+        return (sawFile ? size : nil, latest)
+    }
+
+    private func displayName(for bundleId: String) -> String {
+        bundleId.replacingOccurrences(of: "com~apple~", with: "Apple ").replacingOccurrences(of: "~", with: ".")
+    }
+
+    private func sort(_ containers: [ICloudDriveContainer], by key: DriveSortKey) -> [ICloudDriveContainer] {
+        containers.sorted { lhs, rhs in
+            switch key {
+            case .name: return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+            case .size: return (lhs.sizeBytes ?? -1, lhs.displayName) > (rhs.sizeBytes ?? -1, rhs.displayName)
+            case .modified: return (lhs.modifiedAt ?? .distantPast, lhs.displayName) > (rhs.modifiedAt ?? .distantPast, rhs.displayName)
+            }
+        }
+    }
+}
