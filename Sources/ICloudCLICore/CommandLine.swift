@@ -65,6 +65,18 @@ public struct DriveContainersOptions: Equatable, Sendable {
     }
 }
 
+public struct ShortcutsListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var shortcutsDirectory: URL
+    public var namePattern: String?
+
+    public init(format: OutputFormat = .json, shortcutsDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Shortcuts"), namePattern: String? = nil) {
+        self.format = format
+        self.shortcutsDirectory = shortcutsDirectory
+        self.namePattern = namePattern
+    }
+}
+
 public struct CloudTabsProbeOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var safariDirectory: URL
@@ -83,6 +95,7 @@ public enum CLICommand: Equatable, Sendable {
     case safariFrequentlyVisited(SafariFrequentlyVisitedOptions)
     case safariReadingList(SafariBookmarksOptions)
     case safariTabs(SafariTabsOptions)
+    case shortcutsList(ShortcutsListOptions)
     case help
     case version
 }
@@ -120,6 +133,11 @@ public struct CLIParser: Sendable {
             case "containers": return .driveContainers(try parseDriveContainersOptions(tokens))
             default: throw CLIParseError.unknownCommand((["drive", driveCommand] + tokens).joined(separator: " "))
             }
+        }
+        if topCommand == "shortcuts" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["shortcuts"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .shortcutsList(try parseShortcutsListOptions(tokens))
         }
         guard topCommand == "safari" else { throw CLIParseError.unknownCommand(topCommand) }
         guard let safariCommand = tokens.first else { throw CLIParseError.unknownCommand((["safari"] + tokens).joined(separator: " ")) }
@@ -226,6 +244,21 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseShortcutsListOptions(_ tokens: [String]) throws -> ShortcutsListOptions {
+        var options = ShortcutsListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--shortcuts-dir": options.shortcutsDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--name": options.namePattern = try value(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseCloudTabsProbeOptions(_ tokens: [String]) throws -> CloudTabsProbeOptions {
         var options = CloudTabsProbeOptions(); var index = 0
         while index < tokens.count {
@@ -268,6 +301,7 @@ icloud-cli \(version)
 Usage:
   icloud-cli drive list [--path PATH] [--depth N] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
+  icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli safari tabs [--source all|current-session|last-session] [--format json|text] [--safari-dir PATH]
   icloud-cli safari bookmarks [--format json|text] [--safari-dir PATH]
   icloud-cli safari reading-list [--format json|text] [--safari-dir PATH]
@@ -278,6 +312,7 @@ Commands:
   drive list     List files under the local iCloud Drive root without reading file contents.
   drive containers
                  List top-level iCloud app containers.
+  shortcuts list List local Shortcuts metadata without executing shortcuts.
   safari tabs    Read Safari open tabs from local Safari session files.
   safari bookmarks
                  Read Safari bookmarks from Bookmarks.plist.

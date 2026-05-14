@@ -132,3 +132,16 @@ import Testing
     #expect(options.format == .json)
     #expect(options.rootDirectory.path == "/tmp/mobile-documents")
 }
+
+@Test func parsesShortcutsListCommand() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "shortcuts", "list", "--name", "Daily", "--format", "text", "--shortcuts-dir", "/tmp/shortcuts"])
+
+    guard case .shortcutsList(let options) = command else {
+        Issue.record("Expected shortcuts list command")
+        return
+    }
+
+    #expect(options.namePattern == "Daily")
+    #expect(options.format == .text)
+    #expect(options.shortcutsDirectory.path == "/tmp/shortcuts")
+}

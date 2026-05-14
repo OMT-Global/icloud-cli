@@ -1,18 +1,14 @@
 # Issue work result
 
-## Selected issues
+## Selected issue
 
-- Closes #19
-- Closes #32
+- Closes #27
 
 ## Summary
 
-Added read-only iCloud Drive metadata inventory commands:
+Added `icloud-cli shortcuts list` for read-only local Shortcuts metadata inventory. Each entry includes `name`, `actionCount`, `createdAt`, `modifiedAt`, and `acceptsInput`. The command supports `--name PATTERN`, `--format json|text`, and `--shortcuts-dir PATH` for fixtures or alternate libraries.
 
-- `icloud-cli drive list` lists files under the local iCloud Drive root with relative path, name, size, modified timestamp, iCloud status, and app container.
-- `icloud-cli drive containers` lists top-level iCloud app containers with display name, size, and latest modified timestamp.
-
-The implementation uses synthetic filesystem fixtures and does not read file contents.
+The implementation does not execute shortcuts and does not request Automation permission.
 
 ## Validation
 
@@ -23,6 +19,6 @@ bash scripts/ci/run-fast-checks.sh
 swift test
 swift build
 bash scripts/check-privacy-fixtures.sh
-.build/debug/icloud-cli drive list --icloud-root Tests/Fixtures/MobileDocuments --format json
-.build/debug/icloud-cli drive containers --icloud-root Tests/Fixtures/MobileDocuments --sort-by size --format text
+.build/debug/icloud-cli shortcuts list --shortcuts-dir Tests/Fixtures/Shortcuts --format json
+.build/debug/icloud-cli shortcuts list --shortcuts-dir Tests/Fixtures/Shortcuts --name Daily --format text
 ```
