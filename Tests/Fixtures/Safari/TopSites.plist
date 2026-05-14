@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>TopSites</key>
+	<array>
+		<dict>
+			<key>Score</key>
+			<integer>42</integer>
+			<key>Title</key>
+			<string>Dashboard</string>
+			<key>URL</key>
+			<string>https://example.com/dashboard</string>
+		</dict>
+		<dict>
+			<key>Score</key>
+			<integer>7</integer>
+			<key>Title</key>
+			<string>Docs</string>
+			<key>URL</key>
+			<string>https://example.org/docs</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Ignore</string>
+			<key>URL</key>
+			<string>ftp://example.net/not-web</string>
+		</dict>
+	</array>
+</dict>
+</plist>

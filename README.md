@@ -7,9 +7,12 @@ icloud-cli safari tabs
 icloud-cli safari tabs --format text
 icloud-cli safari tabs --source current-session
 icloud-cli safari cloud-tabs probe
+icloud-cli safari bookmarks
+icloud-cli safari reading-list
+icloud-cli safari frequently-visited --limit 10
 ```
 
-The initial implementation reads local Safari session property lists from `~/Library/Safari`. That keeps the first slice simple and testable while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
+The initial implementation reads local Safari session and metadata property lists from `~/Library/Safari`. That keeps the first slice simple and testable while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
 
 If Safari session files are unreadable, the command exits with an error naming the file paths it tried. If the files are readable but empty, the error says no tabs were found instead of treating it as a permissions problem.
 

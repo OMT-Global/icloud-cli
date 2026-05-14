@@ -29,6 +29,18 @@ public struct CommandRunner: Sendable {
                 let report = CloudTabsProbe(safariDirectory: options.safariDirectory).probe()
                 output(try render(report, format: options.format))
                 return 0
+            case .safariBookmarks(let options):
+                let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
+                output(try render(bookmarks, format: options.format))
+                return 0
+            case .safariFrequentlyVisited(let options):
+                let sites = try SafariFrequentlyVisitedReader(safariDirectory: options.safariDirectory).readSites(limit: options.limit)
+                output(try render(sites, format: options.format))
+                return 0
+            case .safariReadingList(let options):
+                let items = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readReadingList()
+                output(try render(items, format: options.format))
+                return 0
             case .safariTabs(let options):
                 let tabs = try SafariTabsReader(safariDirectory: options.safariDirectory).readTabs(source: options.source)
                 output(try render(tabs, format: options.format))
@@ -55,6 +67,50 @@ public struct CommandRunner: Sendable {
                     return tab.url
                 }
                 .joined(separator: "\n")
+        }
+    }
+
+
+    public func render(_ bookmarks: [SafariBookmark], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(bookmarks), as: UTF8.self)
+        case .text:
+            return bookmarks.map { bookmark in
+                let prefix = bookmark.folderPath.isEmpty ? "" : "[\(bookmark.folderPath)] "
+                if let title = bookmark.title { return "\(prefix)\(title) - \(bookmark.url)" }
+                return "\(prefix)\(bookmark.url)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ items: [SafariReadingListItem], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(items), as: UTF8.self)
+        case .text:
+            return items.map { item in
+                if let title = item.title { return "\(title) - \(item.url)" }
+                return item.url
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ sites: [SafariFrequentlyVisitedSite], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(sites), as: UTF8.self)
+        case .text:
+            return sites.map { site in
+                if let title = site.title { return "#\(site.rank) \(title) - \(site.url)" }
+                return "#\(site.rank) \(site.url)"
+            }.joined(separator: "\n")
         }
     }
 

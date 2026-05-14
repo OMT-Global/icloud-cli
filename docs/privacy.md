@@ -7,6 +7,7 @@
 The CLI may read or derive:
 
 - Safari tab URLs and titles.
+- Safari bookmark URLs/titles, Reading List URLs/titles, and frequently visited URLs/titles.
 - Safari session file paths and read errors.
 - Future Safari iCloud tab metadata from local sync stores such as `CloudTabs.db`.
 - Future Apple account, iCloud settings, or device-sync metadata.
@@ -31,6 +32,9 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | Command | Reads | macOS permission expectation |
 | --- | --- | --- |
 | `icloud-cli safari tabs` | `~/Library/Safari/CurrentSession.plist` and `~/Library/Safari/LastSession.plist` | Terminal or calling process may need Full Disk Access to read Safari session files. |
+| `icloud-cli safari bookmarks` | `~/Library/Safari/Bookmarks.plist` bookmark entries | Terminal or calling process may need Full Disk Access to read Safari metadata files. |
+| `icloud-cli safari reading-list` | `~/Library/Safari/Bookmarks.plist` Reading List entries | Terminal or calling process may need Full Disk Access to read Safari metadata files. |
+| `icloud-cli safari frequently-visited` | `~/Library/Safari/TopSites.plist` or compatible frequently visited site cache | Terminal or calling process may need Full Disk Access to read Safari metadata files. |
 | Future `icloud-cli safari tabs --include-cloud` | Safari iCloud sync storage, likely under `~/Library/Safari` | Full Disk Access is expected; schema and safety constraints must be documented before implementation. |
 | Future iCloud settings commands | Local Apple account or system settings state | Document per-command read surfaces before implementation; do not require Automation unless a command actually controls an app. |
 

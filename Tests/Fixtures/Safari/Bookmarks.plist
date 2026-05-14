@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Children</key>
+	<array>
+		<dict>
+			<key>URIDictionary</key>
+			<dict>
+				<key>title</key>
+				<string>Example Docs</string>
+			</dict>
+			<key>URLString</key>
+			<string>https://example.com/docs</string>
+			<key>WebBookmarkType</key>
+			<string>WebBookmarkTypeLeaf</string>
+		</dict>
+		<dict>
+			<key>Children</key>
+			<array>
+				<dict>
+					<key>URIDictionary</key>
+					<dict>
+						<key>title</key>
+						<string>Example Research</string>
+					</dict>
+					<key>URLString</key>
+					<string>https://example.org/research</string>
+					<key>WebBookmarkType</key>
+					<string>WebBookmarkTypeLeaf</string>
+				</dict>
+			</array>
+			<key>Title</key>
+			<string>Research</string>
+			<key>WebBookmarkType</key>
+			<string>WebBookmarkTypeList</string>
+		</dict>
+		<dict>
+			<key>Children</key>
+			<array>
+				<dict>
+					<key>DateAdded</key>
+					<string>2026-05-13T00:00:00Z</string>
+					<key>URIDictionary</key>
+					<dict>
+						<key>title</key>
+						<string>Read Later</string>
+					</dict>
+					<key>URLString</key>
+					<string>https://example.net/read</string>
+					<key>WebBookmarkType</key>
+					<string>WebBookmarkTypeLeaf</string>
+				</dict>
+			</array>
+			<key>Title</key>
+			<string>com.apple.ReadingList</string>
+			<key>WebBookmarkType</key>
+			<string>WebBookmarkTypeList</string>
+		</dict>
+	</array>
+	<key>Title</key>
+	<string>BookmarksBar</string>
+	<key>WebBookmarkType</key>
+	<string>WebBookmarkTypeList</string>
+</dict>
+</plist>
