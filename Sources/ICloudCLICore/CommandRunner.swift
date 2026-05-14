@@ -29,6 +29,10 @@ public struct CommandRunner: Sendable {
                 let report = CloudTabsProbe(safariDirectory: options.safariDirectory).probe()
                 output(try render(report, format: options.format))
                 return 0
+            case .devicesList(let options):
+                let devices = try ICloudDevicesReader(cacheFile: options.cacheFile).listDevices()
+                output(try render(devices, format: options.format))
+                return 0
             case .driveContainers(let options):
                 let containers = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listContainers(sortBy: options.sortBy)
                 output(try render(containers, format: options.format))
@@ -36,6 +40,10 @@ public struct CommandRunner: Sendable {
             case .driveList(let options):
                 let files = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listFiles(path: options.path, depth: options.depth)
                 output(try render(files, format: options.format))
+                return 0
+            case .focusStatus(let options):
+                let status = try FocusStatusReader(focusDirectory: options.focusDirectory).readStatus()
+                output(try render(status, format: options.format))
                 return 0
             case .safariBookmarks(let options):
                 let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
@@ -56,6 +64,10 @@ public struct CommandRunner: Sendable {
             case .shortcutsList(let options):
                 let shortcuts = try ShortcutsInventoryReader(shortcutsDirectory: options.shortcutsDirectory).listShortcuts(namePattern: options.namePattern)
                 output(try render(shortcuts, format: options.format))
+                return 0
+            case .storageStatus(let options):
+                let status = try ICloudStorageStatusReader(cacheFile: options.cacheFile).readStatus()
+                output(try render(status, format: options.format))
                 return 0
             }
         } catch {
@@ -167,6 +179,56 @@ public struct CommandRunner: Sendable {
             return shortcuts.map { shortcut in
                 let input = shortcut.acceptsInput ? "accepts input" : "no input"
                 return "\(shortcut.name) - \(shortcut.actionCount) actions, \(input)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ status: ICloudStorageStatus, format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(status), as: UTF8.self)
+        case .text:
+            let used = Double(status.usedBytes) / 1_000_000_000
+            let total = Double(status.totalBytes) / 1_000_000_000
+            let available = Double(status.availableBytes) / 1_000_000_000
+            let account = status.accountEmail ?? "unknown account"
+            return String(format: "iCloud storage: %.1f GB used of %.1f GB, %.1f GB available (%@)", used, total, available, account)
+        }
+    }
+
+    public func render(_ status: FocusStatus, format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(status), as: UTF8.self)
+        case .text:
+            guard let active = status.activeFocus else { return "Focus: none" }
+            if let endsAt = status.endsAt {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm"
+                return "Focus: \(active) (until \(formatter.string(from: endsAt)))"
+            }
+            return "Focus: \(active)"
+        }
+    }
+
+    public func render(_ devices: [ICloudDevice], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return String(decoding: try encoder.encode(devices), as: UTF8.self)
+        case .text:
+            return devices.map { device in
+                let current = device.isCurrentDevice ? " current" : ""
+                let os = device.osVersion.map { " (\($0))" } ?? ""
+                return "\(device.name) - \(device.model)\(os)\(current)"
             }.joined(separator: "\n")
         }
     }

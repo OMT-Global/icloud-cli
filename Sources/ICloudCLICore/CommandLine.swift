@@ -77,6 +77,36 @@ public struct ShortcutsListOptions: Equatable, Sendable {
     }
 }
 
+public struct StorageStatusOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var cacheFile: URL
+
+    public init(format: OutputFormat = .json, cacheFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/MobileMeAccounts.plist")) {
+        self.format = format
+        self.cacheFile = cacheFile
+    }
+}
+
+public struct FocusStatusOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var focusDirectory: URL
+
+    public init(format: OutputFormat = .json, focusDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/DoNotDisturb")) {
+        self.format = format
+        self.focusDirectory = focusDirectory
+    }
+}
+
+public struct DevicesListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var cacheFile: URL
+
+    public init(format: OutputFormat = .json, cacheFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/MobileMeAccounts.plist")) {
+        self.format = format
+        self.cacheFile = cacheFile
+    }
+}
+
 public struct CloudTabsProbeOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var safariDirectory: URL
@@ -89,13 +119,16 @@ public struct CloudTabsProbeOptions: Equatable, Sendable {
 
 public enum CLICommand: Equatable, Sendable {
     case cloudTabsProbe(CloudTabsProbeOptions)
+    case devicesList(DevicesListOptions)
     case driveContainers(DriveContainersOptions)
     case driveList(DriveListOptions)
+    case focusStatus(FocusStatusOptions)
     case safariBookmarks(SafariBookmarksOptions)
     case safariFrequentlyVisited(SafariFrequentlyVisitedOptions)
     case safariReadingList(SafariBookmarksOptions)
     case safariTabs(SafariTabsOptions)
     case shortcutsList(ShortcutsListOptions)
+    case storageStatus(StorageStatusOptions)
     case help
     case version
 }
@@ -125,6 +158,21 @@ public struct CLIParser: Sendable {
         if tokens == ["--version"] || tokens == ["-V"] { return .version }
 
         let topCommand = tokens.removeFirst()
+        if topCommand == "storage" {
+            guard tokens.first == "status" else { throw CLIParseError.unknownCommand((["storage"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .storageStatus(try parseStorageStatusOptions(tokens))
+        }
+        if topCommand == "focus" {
+            guard tokens.first == "status" else { throw CLIParseError.unknownCommand((["focus"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .focusStatus(try parseFocusStatusOptions(tokens))
+        }
+        if topCommand == "devices" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["devices"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .devicesList(try parseDevicesListOptions(tokens))
+        }
         if topCommand == "drive" {
             guard let driveCommand = tokens.first else { throw CLIParseError.unknownCommand("drive") }
             tokens.removeFirst()
@@ -259,6 +307,48 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseStorageStatusOptions(_ tokens: [String]) throws -> StorageStatusOptions {
+        var options = StorageStatusOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--cache-file": options.cacheFile = try parseURL(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseFocusStatusOptions(_ tokens: [String]) throws -> FocusStatusOptions {
+        var options = FocusStatusOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--focus-dir": options.focusDirectory = try parseURL(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseDevicesListOptions(_ tokens: [String]) throws -> DevicesListOptions {
+        var options = DevicesListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--cache-file": options.cacheFile = try parseURL(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseCloudTabsProbeOptions(_ tokens: [String]) throws -> CloudTabsProbeOptions {
         var options = CloudTabsProbeOptions(); var index = 0
         while index < tokens.count {
@@ -299,6 +389,9 @@ public enum CLIHelp {
 icloud-cli \(version)
 
 Usage:
+  icloud-cli storage status [--format json|text] [--cache-file PATH]
+  icloud-cli focus status [--format json|text] [--focus-dir PATH]
+  icloud-cli devices list [--format json|text] [--cache-file PATH]
   icloud-cli drive list [--path PATH] [--depth N] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
@@ -309,6 +402,9 @@ Usage:
   icloud-cli safari cloud-tabs probe [--format json|text] [--safari-dir PATH]
 
 Commands:
+  storage status Report locally cached iCloud storage quota.
+  focus status   Report locally cached Focus / Do Not Disturb status.
+  devices list   List locally cached iCloud registered devices.
   drive list     List files under the local iCloud Drive root without reading file contents.
   drive containers
                  List top-level iCloud app containers.
