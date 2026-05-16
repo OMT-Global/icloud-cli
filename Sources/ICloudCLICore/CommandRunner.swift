@@ -25,9 +25,22 @@ public struct CommandRunner: Sendable {
             case .version:
                 output(CLIHelp.version)
                 return 0
+            case .cacheRead(let options):
+                let command = options.command ?? ""
+                let envelope = try CacheWatchStore(outputDirectory: options.outputDirectory).read(command: command)
+                output(try render(envelope, format: options.format))
+                return 0
+            case .cacheStatus(let options):
+                let status = try CacheWatchStore(outputDirectory: options.outputDirectory).status()
+                output(try render(status, format: options.format))
+                return 0
             case .cloudTabsProbe(let options):
                 let report = CloudTabsProbe(safariDirectory: options.safariDirectory).probe()
                 output(try render(report, format: options.format))
+                return 0
+            case .contactsList(let options):
+                let contacts = try LocalSQLiteInventoryReader(database: options.addressBookDatabase).contacts(search: options.search, limit: options.limit, includeNotes: options.includeNotes)
+                output(try render(contacts, format: options.format))
                 return 0
             case .devicesList(let options):
                 let devices = try ICloudDevicesReader(cacheFile: options.cacheFile).listDevices()
@@ -49,6 +62,50 @@ public struct CommandRunner: Sendable {
                 let activities = try HandoffActivityReader(handoffDirectory: options.handoffDirectory).listActivities(limit: options.limit)
                 output(try render(activities, format: options.format))
                 return 0
+            case .mapsFavorites(let options):
+                let places = try LocalSQLiteInventoryReader(database: options.store).mapFavorites()
+                output(try render(places, format: options.format))
+                return 0
+            case .mapsRecents(let options):
+                let places = try LocalSQLiteInventoryReader(database: options.store).mapRecents(limit: options.limit)
+                output(try render(places, format: options.format))
+                return 0
+            case .messagesConversations(let options):
+                let conversations = try LocalSQLiteInventoryReader(database: options.chatDatabase).messageConversations()
+                output(try render(conversations, format: options.format))
+                return 0
+            case .messagesRecent(let options):
+                let messages = try LocalSQLiteInventoryReader(database: options.chatDatabase).recentMessages(confirmSensitive: options.confirmSensitive, includeBody: options.includeBody, since: options.since, limit: options.limit)
+                output(try render(messages, format: options.format))
+                return 0
+            case .newsHistory(let options):
+                let articles = try LocalSQLiteInventoryReader(database: options.store).newsHistory(since: options.since, limit: options.limit)
+                output(try render(articles, format: options.format))
+                return 0
+            case .newsTopics(let options):
+                let topics = try LocalSQLiteInventoryReader(database: options.store).newsTopics()
+                output(try render(topics, format: options.format))
+                return 0
+            case .notesList(let options):
+                let notes = try LocalSQLiteInventoryReader(database: options.notesStore).notes(folder: options.folder, modifiedSince: options.modifiedSince, includeBody: options.includeBody)
+                output(try render(notes, format: options.format))
+                return 0
+            case .photosList(let options):
+                let photos = try PhotosInventoryReader(photosLibraryDirectory: options.photosLibrary).listPhotos()
+                output(try render(photos, format: options.format))
+                return 0
+            case .photosScreenshots(let options):
+                let screenshots = try PhotosInventoryReader(screenshotsDirectory: options.screenshotsDirectory).listScreenshots()
+                output(try render(screenshots, format: options.format))
+                return 0
+            case .remindersList(let options):
+                let reminders = try LocalSQLiteInventoryReader(database: options.store).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted)
+                output(try render(reminders, format: options.format))
+                return 0
+            case .remindersLists(let options):
+                let lists = try LocalSQLiteInventoryReader(database: options.store).reminderLists()
+                output(try render(lists, format: options.format))
+                return 0
             case .safariBookmarks(let options):
                 let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
                 output(try render(bookmarks, format: options.format))
@@ -56,6 +113,10 @@ public struct CommandRunner: Sendable {
             case .safariFrequentlyVisited(let options):
                 let sites = try SafariFrequentlyVisitedReader(safariDirectory: options.safariDirectory).readSites(limit: options.limit)
                 output(try render(sites, format: options.format))
+                return 0
+            case .safariHistory(let options):
+                let history = try LocalSQLiteInventoryReader(database: options.historyDatabase).safariHistory(confirmSensitive: options.confirmSensitive, since: options.since, until: options.until, limit: options.limit, redactURLs: options.redactURLs)
+                output(try render(history, format: options.format))
                 return 0
             case .safariReadingList(let options):
                 let items = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readReadingList()
@@ -76,6 +137,15 @@ public struct CommandRunner: Sendable {
             case .walletPasses(let options):
                 let passes = try WalletPassesReader(passesDirectory: options.passesDirectory).listPasses(type: options.type, activeOnly: options.activeOnly)
                 output(try render(passes, format: options.format))
+                return 0
+            case .watch(let options):
+                let store = CacheWatchStore(outputDirectory: options.outputDirectory)
+                repeat {
+                    let status = try store.refresh(commands: options.commands)
+                    output(try render(status, format: .json))
+                    if options.once { break }
+                    Thread.sleep(forTimeInterval: TimeInterval(options.intervalSeconds))
+                } while true
                 return 0
             }
         } catch {
@@ -100,6 +170,26 @@ public struct CommandRunner: Sendable {
                 }
                 .joined(separator: "\n")
         }
+    }
+
+    public func render<T: Encodable>(_ values: [T], format: OutputFormat) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let json = String(decoding: try encoder.encode(values), as: UTF8.self)
+        switch format {
+        case .json:
+            return json
+        case .text:
+            return json
+        }
+    }
+
+    public func render<T: Encodable>(_ value: T, format: OutputFormat) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return String(decoding: try encoder.encode(value), as: UTF8.self)
     }
 
 

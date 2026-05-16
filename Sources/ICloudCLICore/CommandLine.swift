@@ -143,20 +143,196 @@ public struct CloudTabsProbeOptions: Equatable, Sendable {
     }
 }
 
+public struct PhotosScreenshotsOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var screenshotsDirectory: URL
+
+    public init(format: OutputFormat = .json, screenshotsDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Screenshots")) {
+        self.format = format
+        self.screenshotsDirectory = screenshotsDirectory
+    }
+}
+
+public struct PhotosListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var photosLibrary: URL
+
+    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary")) {
+        self.format = format
+        self.photosLibrary = photosLibrary
+    }
+}
+
+public struct NotesListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var notesStore: URL
+    public var folder: String?
+    public var modifiedSince: String?
+    public var includeBody: Bool
+
+    public init(format: OutputFormat = .json, notesStore: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Group Containers/group.com.apple.notes/NoteStore.sqlite"), folder: String? = nil, modifiedSince: String? = nil, includeBody: Bool = false) {
+        self.format = format
+        self.notesStore = notesStore
+        self.folder = folder
+        self.modifiedSince = modifiedSince
+        self.includeBody = includeBody
+    }
+}
+
+public struct RemindersListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var store: URL
+    public var list: String?
+    public var dueBefore: String?
+    public var dueAfter: String?
+    public var includeCompleted: Bool
+
+    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false) {
+        self.format = format
+        self.store = store
+        self.list = list
+        self.dueBefore = dueBefore
+        self.dueAfter = dueAfter
+        self.includeCompleted = includeCompleted
+    }
+}
+
+public struct SafariHistoryOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var historyDatabase: URL
+    public var confirmSensitive: Bool
+    public var since: String?
+    public var until: String?
+    public var limit: Int
+    public var redactURLs: Bool
+
+    public init(format: OutputFormat = .json, historyDatabase: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari/History.db"), confirmSensitive: Bool = false, since: String? = nil, until: String? = nil, limit: Int = 100, redactURLs: Bool = false) {
+        self.format = format
+        self.historyDatabase = historyDatabase
+        self.confirmSensitive = confirmSensitive
+        self.since = since
+        self.until = until
+        self.limit = limit
+        self.redactURLs = redactURLs
+    }
+}
+
+public struct MessagesOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var chatDatabase: URL
+    public var confirmSensitive: Bool
+    public var includeBody: Bool
+    public var since: String?
+    public var limit: Int
+
+    public init(format: OutputFormat = .json, chatDatabase: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Messages/chat.db"), confirmSensitive: Bool = false, includeBody: Bool = false, since: String? = nil, limit: Int = 20) {
+        self.format = format
+        self.chatDatabase = chatDatabase
+        self.confirmSensitive = confirmSensitive
+        self.includeBody = includeBody
+        self.since = since
+        self.limit = limit
+    }
+}
+
+public struct ContactsListOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var addressBookDatabase: URL
+    public var search: String?
+    public var limit: Int
+    public var includeNotes: Bool
+
+    public init(format: OutputFormat = .json, addressBookDatabase: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/AddressBook/AddressBook-v22.abcddb"), search: String? = nil, limit: Int = 50, includeNotes: Bool = false) {
+        self.format = format
+        self.addressBookDatabase = addressBookDatabase
+        self.search = search
+        self.limit = limit
+        self.includeNotes = includeNotes
+    }
+}
+
+public struct MapsOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var store: URL
+    public var limit: Int
+
+    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Library/Maps/Maps.sqlite"), limit: Int = 20) {
+        self.format = format
+        self.store = store
+        self.limit = limit
+    }
+}
+
+public struct NewsOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var store: URL
+    public var since: String?
+    public var limit: Int
+
+    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.news/Data/Library/Application Support/news.sqlite"), since: String? = nil, limit: Int = 50) {
+        self.format = format
+        self.store = store
+        self.since = since
+        self.limit = limit
+    }
+}
+
+public struct WatchOptions: Equatable, Sendable {
+    public var intervalSeconds: Int
+    public var outputDirectory: URL
+    public var commands: [String]
+    public var once: Bool
+
+    public init(intervalSeconds: Int = 60, outputDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/cache"), commands: [String] = CacheWatchStore.defaultCommands, once: Bool = false) {
+        self.intervalSeconds = intervalSeconds
+        self.outputDirectory = outputDirectory
+        self.commands = commands
+        self.once = once
+    }
+}
+
+public struct CacheOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var outputDirectory: URL
+    public var command: String?
+
+    public init(format: OutputFormat = .json, outputDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/cache"), command: String? = nil) {
+        self.format = format
+        self.outputDirectory = outputDirectory
+        self.command = command
+    }
+}
+
 public enum CLICommand: Equatable, Sendable {
+    case cacheRead(CacheOptions)
+    case cacheStatus(CacheOptions)
     case cloudTabsProbe(CloudTabsProbeOptions)
+    case contactsList(ContactsListOptions)
     case devicesList(DevicesListOptions)
     case driveContainers(DriveContainersOptions)
     case driveList(DriveListOptions)
     case focusStatus(FocusStatusOptions)
     case handoffList(HandoffListOptions)
+    case mapsFavorites(MapsOptions)
+    case mapsRecents(MapsOptions)
+    case messagesConversations(MessagesOptions)
+    case messagesRecent(MessagesOptions)
+    case newsHistory(NewsOptions)
+    case newsTopics(NewsOptions)
+    case notesList(NotesListOptions)
+    case photosList(PhotosListOptions)
+    case photosScreenshots(PhotosScreenshotsOptions)
+    case remindersList(RemindersListOptions)
+    case remindersLists(RemindersListOptions)
     case safariBookmarks(SafariBookmarksOptions)
     case safariFrequentlyVisited(SafariFrequentlyVisitedOptions)
+    case safariHistory(SafariHistoryOptions)
     case safariReadingList(SafariBookmarksOptions)
     case safariTabs(SafariTabsOptions)
     case shortcutsList(ShortcutsListOptions)
     case storageStatus(StorageStatusOptions)
     case walletPasses(WalletPassesOptions)
+    case watch(WatchOptions)
     case help
     case version
 }
@@ -227,12 +403,80 @@ public struct CLIParser: Sendable {
             tokens.removeFirst()
             return .shortcutsList(try parseShortcutsListOptions(tokens))
         }
+        if topCommand == "photos" {
+            guard let photosCommand = tokens.first else { throw CLIParseError.unknownCommand("photos") }
+            tokens.removeFirst()
+            switch photosCommand {
+            case "screenshots": return .photosScreenshots(try parsePhotosScreenshotsOptions(tokens))
+            case "list": return .photosList(try parsePhotosListOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["photos", photosCommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "notes" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["notes"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .notesList(try parseNotesListOptions(tokens))
+        }
+        if topCommand == "reminders" {
+            guard let remindersCommand = tokens.first else { throw CLIParseError.unknownCommand("reminders") }
+            tokens.removeFirst()
+            switch remindersCommand {
+            case "list": return .remindersList(try parseRemindersListOptions(tokens))
+            case "lists": return .remindersLists(try parseRemindersListOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["reminders", remindersCommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "messages" {
+            guard let messagesCommand = tokens.first else { throw CLIParseError.unknownCommand("messages") }
+            tokens.removeFirst()
+            switch messagesCommand {
+            case "conversations": return .messagesConversations(try parseMessagesOptions(tokens))
+            case "recent": return .messagesRecent(try parseMessagesOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["messages", messagesCommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "contacts" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["contacts"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .contactsList(try parseContactsListOptions(tokens))
+        }
+        if topCommand == "maps" {
+            guard let mapsCommand = tokens.first else { throw CLIParseError.unknownCommand("maps") }
+            tokens.removeFirst()
+            switch mapsCommand {
+            case "favorites": return .mapsFavorites(try parseMapsOptions(tokens))
+            case "recents": return .mapsRecents(try parseMapsOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["maps", mapsCommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "news" {
+            guard let newsCommand = tokens.first else { throw CLIParseError.unknownCommand("news") }
+            tokens.removeFirst()
+            switch newsCommand {
+            case "history": return .newsHistory(try parseNewsOptions(tokens))
+            case "topics": return .newsTopics(try parseNewsOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["news", newsCommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "watch" {
+            return .watch(try parseWatchOptions(tokens))
+        }
+        if topCommand == "cache" {
+            guard let cacheCommand = tokens.first else { throw CLIParseError.unknownCommand("cache") }
+            tokens.removeFirst()
+            switch cacheCommand {
+            case "read": return .cacheRead(try parseCacheOptions(tokens, requiresCommand: true))
+            case "status": return .cacheStatus(try parseCacheOptions(tokens, requiresCommand: false))
+            default: throw CLIParseError.unknownCommand((["cache", cacheCommand] + tokens).joined(separator: " "))
+            }
+        }
         guard topCommand == "safari" else { throw CLIParseError.unknownCommand(topCommand) }
         guard let safariCommand = tokens.first else { throw CLIParseError.unknownCommand((["safari"] + tokens).joined(separator: " ")) }
         tokens.removeFirst()
 
         switch safariCommand {
         case "tabs": return .safariTabs(try parseSafariTabsOptions(tokens))
+        case "history": return .safariHistory(try parseSafariHistoryOptions(tokens))
         case "bookmarks": return .safariBookmarks(try parseSafariBookmarksOptions(tokens))
         case "reading-list": return .safariReadingList(try parseSafariBookmarksOptions(tokens))
         case "frequently-visited": return .safariFrequentlyVisited(try parseSafariFrequentlyVisitedOptions(tokens))
@@ -437,6 +681,198 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parsePhotosScreenshotsOptions(_ tokens: [String]) throws -> PhotosScreenshotsOptions {
+        var options = PhotosScreenshotsOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--screenshots-dir": options.screenshotsDirectory = try parseURL(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parsePhotosListOptions(_ tokens: [String]) throws -> PhotosListOptions {
+        var options = PhotosListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--photos-library": options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseNotesListOptions(_ tokens: [String]) throws -> NotesListOptions {
+        var options = NotesListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--notes-store": options.notesStore = try parseURL(after: token, in: tokens, at: &index)
+            case "--folder": options.folder = try value(after: token, in: tokens, at: &index)
+            case "--modified-since": options.modifiedSince = try value(after: token, in: tokens, at: &index)
+            case "--include-body": options.includeBody = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseRemindersListOptions(_ tokens: [String]) throws -> RemindersListOptions {
+        var options = RemindersListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--reminders-store": options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--list": options.list = try value(after: token, in: tokens, at: &index)
+            case "--due-before": options.dueBefore = try value(after: token, in: tokens, at: &index)
+            case "--due-after": options.dueAfter = try value(after: token, in: tokens, at: &index)
+            case "--completed": options.includeCompleted = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseSafariHistoryOptions(_ tokens: [String]) throws -> SafariHistoryOptions {
+        var options = SafariHistoryOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--history-db": options.historyDatabase = try parseURL(after: token, in: tokens, at: &index)
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--since": options.since = try value(after: token, in: tokens, at: &index)
+            case "--until": options.until = try value(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--redact-urls": options.redactURLs = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseMessagesOptions(_ tokens: [String]) throws -> MessagesOptions {
+        var options = MessagesOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--chat-db": options.chatDatabase = try parseURL(after: token, in: tokens, at: &index)
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--include-body": options.includeBody = true
+            case "--since": options.since = try value(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseContactsListOptions(_ tokens: [String]) throws -> ContactsListOptions {
+        var options = ContactsListOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--addressbook-db": options.addressBookDatabase = try parseURL(after: token, in: tokens, at: &index)
+            case "--search": options.search = try value(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--include-notes": options.includeNotes = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseMapsOptions(_ tokens: [String]) throws -> MapsOptions {
+        var options = MapsOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--maps-store": options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseNewsOptions(_ tokens: [String]) throws -> NewsOptions {
+        var options = NewsOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--news-store": options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--since": options.since = try value(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseWatchOptions(_ tokens: [String]) throws -> WatchOptions {
+        var options = WatchOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--interval":
+                let raw = try value(after: token, in: tokens, at: &index)
+                options.intervalSeconds = max(10, Int(raw) ?? options.intervalSeconds)
+            case "--output-dir": options.outputDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--commands":
+                options.commands = try value(after: token, in: tokens, at: &index)
+                    .split(separator: ",")
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            case "--once": options.once = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseCacheOptions(_ tokens: [String], requiresCommand: Bool) throws -> CacheOptions {
+        var options = CacheOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--output-dir": options.outputDirectory = try parseURL(after: token, in: tokens, at: &index)
+            default:
+                if options.command == nil {
+                    options.command = token
+                } else {
+                    throw CLIParseError.unknownCommand(token)
+                }
+            }
+            index += 1
+        }
+        if requiresCommand && options.command == nil {
+            throw CLIParseError.missingValue("COMMAND")
+        }
+        return options
+    }
+
     private func parseFormat(after option: String, in tokens: [String], at index: inout Int) throws -> OutputFormat {
         let rawValue = try value(after: option, in: tokens, at: &index)
         guard let format = OutputFormat(rawValue: rawValue) else { throw CLIParseError.invalidFormat(rawValue) }
@@ -471,7 +907,23 @@ Usage:
   icloud-cli drive list [--path PATH] [--depth N] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
+  icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
+  icloud-cli photos list [--format json|text] [--photos-library PATH]
+  icloud-cli notes list [--folder NAME] [--modified-since ISO8601] [--include-body] [--format json|text] [--notes-store PATH]
+  icloud-cli reminders lists [--format json|text] [--reminders-store PATH]
+  icloud-cli reminders list [--list NAME] [--due-before ISO8601] [--due-after ISO8601] [--completed] [--format json|text] [--reminders-store PATH]
+  icloud-cli contacts list [--search QUERY] [--limit N] [--include-notes] [--format json|text] [--addressbook-db PATH]
+  icloud-cli messages conversations [--format json|text] [--chat-db PATH]
+  icloud-cli messages recent [--confirm-sensitive] [--include-body] [--since ISO8601] [--limit N] [--format json|text] [--chat-db PATH]
+  icloud-cli maps favorites [--format json|text] [--maps-store PATH]
+  icloud-cli maps recents [--limit N] [--format json|text] [--maps-store PATH]
+  icloud-cli news history [--since ISO8601] [--limit N] [--format json|text] [--news-store PATH]
+  icloud-cli news topics [--format json|text] [--news-store PATH]
+  icloud-cli watch [--interval SECONDS] [--output-dir PATH] [--commands COMMAND,...] [--once]
+  icloud-cli cache read COMMAND [--format json|text] [--output-dir PATH]
+  icloud-cli cache status [--format json|text] [--output-dir PATH]
   icloud-cli safari tabs [--source all|current-session|last-session] [--format json|text] [--safari-dir PATH]
+  icloud-cli safari history [--confirm-sensitive] [--since ISO8601] [--until ISO8601] [--limit N] [--redact-urls] [--format json|text] [--history-db PATH]
   icloud-cli safari bookmarks [--format json|text] [--safari-dir PATH]
   icloud-cli safari reading-list [--format json|text] [--safari-dir PATH]
   icloud-cli safari frequently-visited [--limit N] [--format json|text] [--safari-dir PATH]
@@ -487,7 +939,25 @@ Commands:
   drive containers
                  List top-level iCloud app containers.
   shortcuts list List local Shortcuts metadata without executing shortcuts.
+  photos screenshots
+                 List screenshot file metadata without reading pixels.
+  photos list    List local photo/video asset metadata without exporting media.
+  notes list     List Notes titles and dates; body requires --include-body.
+  reminders list List reminder metadata from a read-only local store.
+  contacts list  List contact cards from local metadata.
+  messages conversations
+                 List message conversation metadata without message bodies.
+  messages recent
+                 List recent messages only after --confirm-sensitive.
+  maps favorites List Maps saved-place metadata.
+  maps recents   List Maps recent-place metadata.
+  news history   List News reading-history metadata.
+  news topics    List followed News topics/channels.
+  watch          Refresh local JSON cache files for OpenClaw polling.
+  cache read     Read one cached command output.
+  cache status   Report age and ok/error state for cached commands.
   safari tabs    Read Safari open tabs from local Safari session files.
+  safari history List Safari history only after --confirm-sensitive.
   safari bookmarks
                  Read Safari bookmarks from Bookmarks.plist.
   safari reading-list
