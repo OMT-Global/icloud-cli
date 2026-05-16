@@ -1,0 +1,139 @@
+import Foundation
+import Testing
+@testable import ICloudCLICore
+
+@Test func parsesOpenIssueInventoryCommands() throws {
+    let photos = try CLIParser().parse(arguments: ["icloud-cli", "photos", "screenshots", "--screenshots-dir", "/tmp/screenshots", "--format", "text"])
+    guard case .photosScreenshots(let photoOptions) = photos else {
+        Issue.record("Expected photos screenshots command")
+        return
+    }
+    #expect(photoOptions.screenshotsDirectory.path == "/tmp/screenshots")
+    #expect(photoOptions.format == .text)
+
+    let notes = try CLIParser().parse(arguments: ["icloud-cli", "notes", "list", "--folder", "Quick Notes", "--modified-since", "2026-01-01T00:00:00Z", "--include-body", "--notes-store", "/tmp/notes.sqlite"])
+    guard case .notesList(let notesOptions) = notes else {
+        Issue.record("Expected notes list command")
+        return
+    }
+    #expect(notesOptions.folder == "Quick Notes")
+    #expect(notesOptions.includeBody == true)
+    #expect(notesOptions.notesStore.path == "/tmp/notes.sqlite")
+
+    let safari = try CLIParser().parse(arguments: ["icloud-cli", "safari", "history", "--confirm-sensitive", "--redact-urls", "--history-db", "/tmp/history.db"])
+    guard case .safariHistory(let safariOptions) = safari else {
+        Issue.record("Expected safari history command")
+        return
+    }
+    #expect(safariOptions.confirmSensitive == true)
+    #expect(safariOptions.redactURLs == true)
+
+    let watch = try CLIParser().parse(arguments: ["icloud-cli", "watch", "--once", "--commands", "safari-tabs,storage-status", "--output-dir", "/tmp/cache"])
+    guard case .watch(let watchOptions) = watch else {
+        Issue.record("Expected watch command")
+        return
+    }
+    #expect(watchOptions.once == true)
+    #expect(watchOptions.commands == ["safari-tabs", "storage-status"])
+}
+
+@Test func readsScreenshotAndPhotoMetadataFromSyntheticFiles() throws {
+    let root = try temporaryDirectory(named: "media")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let screenshots = root.appendingPathComponent("Screenshots")
+    let photos = root.appendingPathComponent("Photos.photoslibrary")
+    try FileManager.default.createDirectory(at: screenshots, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: photos.appendingPathComponent("originals"), withIntermediateDirectories: true)
+    try Data("synthetic".utf8).write(to: screenshots.appendingPathComponent("Screen Shot.png"))
+    try Data("synthetic".utf8).write(to: photos.appendingPathComponent("originals/IMG_0001.HEIC"))
+
+    let reader = PhotosInventoryReader(screenshotsDirectory: screenshots, photosLibraryDirectory: photos)
+
+    #expect(try reader.listScreenshots().map(\.mimeType) == ["image/png"])
+    #expect(try reader.listPhotos().map(\.mediaType) == ["photo"])
+}
+
+@Test func readsSyntheticSQLiteInventoriesAndSensitiveGates() throws {
+    let database = try syntheticInventoryDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let notes = try reader.notes(folder: "Quick Notes", modifiedSince: nil, includeBody: false)
+    #expect(notes.map(\.title) == ["Plan"])
+    #expect(notes.first?.body == nil)
+
+    let reminders = try reader.reminders(list: "Work", dueBefore: "2026-12-31T00:00:00Z", dueAfter: nil, includeCompleted: false)
+    #expect(reminders.map(\.title) == ["Ship PR"])
+    #expect(try reader.reminderLists().first?.itemCount == 1)
+
+    #expect(throws: LocalInventoryError.sensitiveConfirmationRequired("icloud-cli safari history")) {
+        try reader.safariHistory(confirmSensitive: false, since: nil, until: nil, limit: 10, redactURLs: false)
+    }
+    let history = try reader.safariHistory(confirmSensitive: true, since: "2026-01-01T00:00:00Z", until: nil, limit: 10, redactURLs: true)
+    #expect(history.map(\.url) == ["https://example.com"])
+
+    #expect(try reader.messageConversations().map(\.chatIdentifier) == ["chat-1"])
+    #expect(try reader.recentMessages(confirmSensitive: true, includeBody: false, since: "2026-01-01T00:00:00Z", limit: 10).first?.body == nil)
+    #expect(try reader.contacts(search: "Alice", limit: 10, includeNotes: false).map(\.displayName) == ["Alice Example"])
+    #expect(try reader.mapFavorites().first?.sensitivity == "high")
+    #expect(try reader.newsTopics().map(\.name) == ["Technology"])
+}
+
+@Test func cacheStoreWritesReadsAndReportsStatus() throws {
+    let root = try temporaryDirectory(named: "cache")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = CacheWatchStore(outputDirectory: root)
+
+    let status = try store.refresh(commands: ["unknown-command"])
+
+    #expect(status.first?.ok == false)
+    #expect(try store.read(command: "unknown-command").ok == false)
+    #expect(try store.status().map(\.command) == ["unknown-command"])
+}
+
+private func syntheticInventoryDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "sqlite")
+    let database = root.appendingPathComponent("inventory.sqlite")
+    let sql = """
+    CREATE TABLE notes (title TEXT, folderName TEXT, createdAt TEXT, modifiedAt TEXT, isPinned INTEGER, body TEXT);
+    INSERT INTO notes VALUES ('Plan', 'Quick Notes', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', 1, 'Sensitive body');
+    CREATE TABLE reminders (title TEXT, listName TEXT, dueAt TEXT, isCompleted INTEGER, priority INTEGER, notes TEXT, createdAt TEXT);
+    INSERT INTO reminders VALUES ('Ship PR', 'Work', '2026-05-16T12:00:00Z', 0, 5, 'Review', '2026-05-15T00:00:00Z');
+    CREATE TABLE safari_history (url TEXT, title TEXT, visitedAt TEXT, visitCount INTEGER);
+    INSERT INTO safari_history VALUES ('https://example.com/private/path', 'Example', '2026-05-16T12:00:00Z', 2);
+    CREATE TABLE message_conversations (chatIdentifier TEXT, displayName TEXT, participantCount INTEGER, lastMessageAt TEXT, messageCount INTEGER);
+    INSERT INTO message_conversations VALUES ('chat-1', 'Example Chat', 2, '2026-05-16T12:00:00Z', 3);
+    CREATE TABLE recent_messages (chatIdentifier TEXT, sender TEXT, sentAt TEXT, isFromMe INTEGER, body TEXT);
+    INSERT INTO recent_messages VALUES ('chat-1', 'alice@example.com', '2026-05-16T12:00:00Z', 0, 'hello');
+    CREATE TABLE contacts (displayName TEXT, givenName TEXT, familyName TEXT, organizationName TEXT, emails TEXT, phones TEXT, note TEXT);
+    INSERT INTO contacts VALUES ('Alice Example', 'Alice', 'Example', 'Example Org', 'work:alice@example.com', 'mobile:+15550101', 'private note');
+    CREATE TABLE map_favorites (name TEXT, address TEXT, latitude REAL, longitude REAL, category TEXT);
+    INSERT INTO map_favorites VALUES ('Example Home', '1 Example Way', 0.0, 0.0, 'home');
+    CREATE TABLE map_recents (name TEXT, address TEXT, latitude REAL, longitude REAL, category TEXT, searchedAt TEXT);
+    INSERT INTO map_recents VALUES ('Example Cafe', '2 Example Way', 0.0, 0.0, 'restaurant', '2026-05-16T12:00:00Z');
+    CREATE TABLE news_history (title TEXT, source TEXT, url TEXT, readAt TEXT, topic TEXT);
+    INSERT INTO news_history VALUES ('Example Article', 'Example News', 'https://example.com/news', '2026-05-16T12:00:00Z', 'Technology');
+    CREATE TABLE news_topics (name TEXT, type TEXT);
+    INSERT INTO news_topics VALUES ('Technology', 'topic');
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func runSQLite(database: URL, sql: String) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    process.arguments = [database.path, sql]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+}
+
+private func temporaryDirectory(named name: String) throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("icloud-cli-tests")
+        .appendingPathComponent(name)
+        .appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}

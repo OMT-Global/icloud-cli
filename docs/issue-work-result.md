@@ -1,14 +1,32 @@
 # Issue work result
 
-## Selected issue
+## Selected issues
 
-- Closes #27
+- Closes #18
+- Closes #21
+- Closes #23
+- Closes #24
+- Closes #25
+- Closes #26
+- Closes #28
+- Closes #33
+- Closes #34
 
 ## Summary
 
-Added `icloud-cli shortcuts list` for read-only local Shortcuts metadata inventory. Each entry includes `name`, `actionCount`, `createdAt`, `modifiedAt`, and `acceptsInput`. The command supports `--name PATTERN`, `--format json|text`, and `--shortcuts-dir PATH` for fixtures or alternate libraries.
+Added a broad read-only local inventory layer for the current open backlog:
 
-The implementation does not execute shortcuts and does not request Automation permission.
+- `icloud-cli photos screenshots` and `icloud-cli photos list`.
+- `icloud-cli notes list`.
+- `icloud-cli reminders list` and `icloud-cli reminders lists`.
+- `icloud-cli safari history` with `--confirm-sensitive`.
+- `icloud-cli messages conversations` and `icloud-cli messages recent` with `--confirm-sensitive` for recent messages.
+- `icloud-cli contacts list`.
+- `icloud-cli maps favorites` and `icloud-cli maps recents`.
+- `icloud-cli news history` and `icloud-cli news topics`.
+- `icloud-cli watch`, `icloud-cli cache read`, and `icloud-cli cache status` for local OpenClaw polling cache files.
+
+The implementation stays read-only, keeps synthetic test fixtures in temporary test stores, and excludes high-sensitivity Safari history, Messages, and Contacts from the default watch command set.
 
 ## Validation
 
@@ -19,6 +37,6 @@ bash scripts/ci/run-fast-checks.sh
 swift test
 swift build
 bash scripts/check-privacy-fixtures.sh
-.build/debug/icloud-cli shortcuts list --shortcuts-dir Tests/Fixtures/Shortcuts --format json
-.build/debug/icloud-cli shortcuts list --shortcuts-dir Tests/Fixtures/Shortcuts --name Daily --format text
+.build/debug/icloud-cli photos screenshots --screenshots-dir /tmp/icloud-cli-screenshots --format json
+.build/debug/icloud-cli cache status --output-dir /tmp/icloud-cli-cache --format json
 ```

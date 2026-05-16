@@ -8,6 +8,12 @@ The CLI may read or derive:
 
 - Safari tab URLs and titles.
 - Safari bookmark URLs/titles, Reading List URLs/titles, and frequently visited URLs/titles.
+- Safari history URLs/titles and visit timestamps.
+- Notes titles, folder names, dates, and optional body content.
+- Reminder titles, due dates, priorities, and optional notes.
+- Contacts names, emails, phones, organizations, and optional notes.
+- Messages conversation metadata and optional recent message bodies.
+- Photos/screenshots, Maps, and News metadata.
 - Safari session file paths and read errors.
 - Future Safari iCloud tab metadata from local sync stores such as `CloudTabs.db`.
 - Future Apple account, iCloud settings, or device-sync metadata.
@@ -42,6 +48,16 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | `icloud-cli devices list` | Locally cached iCloud registered-device metadata, currently `~/Library/Preferences/MobileMeAccounts.plist` when available | Normal user file access. Device names may be personally identifying; logs should report only count/model summary. |
 | `icloud-cli wallet passes` | Local Wallet pass bundles under `~/Library/Passes`, reading pass manifests only | Normal user file access or Full Disk Access depending on macOS privacy posture. The command is read-only, emits no barcode or payment credential payloads, and logs should omit serial numbers. |
 | `icloud-cli handoff list` | Local Handoff cache files under `~/Library/Application Support/com.apple.handoff` | Normal user file access. The command is read-only and does not use Bluetooth, network, or Continuity APIs. Titles and URLs are sensitive and should be redacted in logs. |
+| `icloud-cli photos screenshots` | Screenshot file metadata under `~/Pictures/Screenshots` by default | Normal user file access. The command does not read pixel data or thumbnails. Logs should redact home-directory paths. |
+| `icloud-cli photos list` | Local Photos library file metadata under `~/Pictures/Photos Library.photoslibrary` by default | Full Disk Access may be needed. The command emits file metadata only and does not export pixels, thumbnails, or EXIF location data. |
+| `icloud-cli notes list` | Local Notes SQLite metadata from `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite` by default | Full Disk Access may be needed. Body content is omitted unless `--include-body` is passed. Logs should redact titles and always omit bodies. |
+| `icloud-cli reminders list` / `reminders lists` | Local Reminders metadata under `~/Library/Reminders` by default | Normal user file access or Full Disk Access depending on macOS privacy posture. Reminder titles and notes are sensitive; logs should summarize list counts. |
+| `icloud-cli safari history` | `~/Library/Safari/History.db` | Full Disk Access is expected. Requires `--confirm-sensitive`; `--redact-urls` is recommended for automated export. This command is not part of default watch polling. |
+| `icloud-cli messages conversations` / `messages recent` | `~/Library/Messages/chat.db` | Full Disk Access is expected. Recent message reads require `--confirm-sensitive`; bodies require `--include-body`. Message commands are not part of default watch polling. |
+| `icloud-cli contacts list` | Local AddressBook SQLite metadata under `~/Library/Application Support/AddressBook` by default | Contacts permission or Full Disk Access may be needed. Notes are omitted unless `--include-notes` is passed. |
+| `icloud-cli maps favorites` / `maps recents` | Local Maps cache under `~/Library/Containers/com.apple.Maps` by default | Location data is sensitive. Home/work categories are high-sensitivity and logs must omit coordinates. |
+| `icloud-cli news history` / `news topics` | Local News cache under `~/Library/Containers/com.apple.news` by default | Reading history is interest-graph data. Logs should summarize source/topic counts rather than URLs. |
+| `icloud-cli watch` / `cache read` / `cache status` | Local cache files under `~/.icloud-cli/cache` by default | Cache files inherit the sensitivity of each command. The cache directory is created with mode `0700`; Safari history, Messages, and Contacts are excluded from the default command set. |
 | Future iCloud settings commands | Local Apple account or system settings state | Document per-command read surfaces before implementation; do not require Automation unless a command actually controls an app. |
 
 Automation permission is not required for the current Safari tab reader because it reads local files. Any future command that controls Safari, System Settings, or another app must document the Automation prompt and failure mode before merge.
@@ -82,3 +98,10 @@ This keeps static privacy checks and Swift tests ahead of the standalone build.
 `icloud-cli wallet passes` reads local pass manifests from `~/Library/Passes` and emits only pass metadata: type, description, organization, relevant/expiration dates, and serial number. It intentionally does not emit barcode payloads, NFC/payment material, images, signatures, or full ZIP contents. Serial numbers are identifiers and should be hidden from OpenClaw status summaries unless the operator explicitly requests raw command output.
 
 `icloud-cli handoff list` reads cached local Handoff activity metadata from `~/Library/Application Support/com.apple.handoff`. The cache schema is treated as best-effort and may vary by macOS release, so the reader accepts JSON/plist fixtures and common key aliases rather than promising a private Apple schema. Activity titles and URLs are sensitive cross-device context; logs should summarize by app/device/count only.
+
+
+## High-sensitivity local inventories
+
+The Photos, Notes, Reminders, Safari history, Messages, Contacts, Maps, and News commands are read-only local inventory surfaces. Synthetic tests use controlled fixture stores; real Apple private schemas can vary by macOS release, so schema adapters should stay conservative and fail closed when tables are unavailable.
+
+`icloud-cli watch` defaults to lower-risk polling commands only: `safari-tabs`, `drive-list`, `photos-screenshots`, and `storage-status`. Operators may add commands explicitly, but high-sensitivity commands such as Safari history, Messages, and Contacts are intentionally excluded from the default cache refresh set.
