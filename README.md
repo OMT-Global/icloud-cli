@@ -1,6 +1,6 @@
 # iCloud CLI
 
-macOS command-line tools for reading iCloud-backed Apple state. The first supported command is Safari tab discovery:
+macOS command-line tools for reading local iCloud-backed Apple state. The current command surface focuses on read-only local inventory:
 
 ```sh
 icloud-cli safari tabs
@@ -15,7 +15,7 @@ icloud-cli drive containers --sort-by size
 icloud-cli shortcuts list --name Daily
 ```
 
-The initial implementation reads local Safari session and metadata property lists from `~/Library/Safari` iCloud Drive metadata from `~/Library/Mobile Documents`, and Shortcuts metadata from `~/Library/Shortcuts`. That keeps the first slice simple and testable while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
+The implementation reads local Safari session and metadata property lists from `~/Library/Safari`, iCloud Drive metadata from `~/Library/Mobile Documents`, and Shortcuts metadata from `~/Library/Shortcuts`. Commands stay local and read-only while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
 
 If Safari session files are unreadable, the command exits with an error naming the file paths it tried. If the files are readable but empty, the error says no tabs were found instead of treating it as a permissions problem.
 
