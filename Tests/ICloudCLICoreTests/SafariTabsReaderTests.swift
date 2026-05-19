@@ -30,6 +30,35 @@ import Testing
     #expect(tabs[1].url == "https://openclaw.ai/docs")
 }
 
+@Test func parserKeepsHttpTabsAndFiltersNonWebUrls() {
+    let plist: [String: Any] = [
+        "Nested": [
+            "Tabs": [
+                [
+                    "url": "http://example.org/plain-http",
+                    "title": "Plain HTTP",
+                ],
+                [
+                    "TabURL": "ftp://example.org/not-web",
+                    "TabTitle": "FTP",
+                ],
+            ],
+        ],
+    ]
+
+    let tabs = SafariSessionPlistParser(sourceName: "fixture").parse(plist)
+
+    #expect(tabs == [
+        SafariTab(
+            url: "http://example.org/plain-http",
+            title: "Plain HTTP",
+            windowIndex: nil,
+            tabIndex: 0,
+            source: "fixture"
+        ),
+    ])
+}
+
 @Test func readerLoadsCurrentSessionPlist() throws {
     let tempRoot = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: tempRoot) }

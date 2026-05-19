@@ -6,6 +6,8 @@ bash scripts/ci/check-shell-syntax.sh
 bash scripts/check-detect-secrets.sh --all-files
 bash scripts/check-privacy-fixtures.sh
 swift test
+bash scripts/ci/check-coverage.sh
+bash scripts/ci/run-mutation-smoke.sh
 swift build
 swift build -c release
 swift run icloud-cli --help
