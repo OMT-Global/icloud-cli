@@ -37,6 +37,14 @@ import Testing
     #expect(options.safariDirectory.path == "/tmp/safari-fixture")
 }
 
+@Test func parsesHelpAndVersionShortcuts() throws {
+    #expect(try CLIParser().parse(arguments: ["icloud-cli"]) == .help)
+    #expect(try CLIParser().parse(arguments: ["icloud-cli", "-h"]) == .help)
+    #expect(try CLIParser().parse(arguments: ["icloud-cli", "--help"]) == .help)
+    #expect(try CLIParser().parse(arguments: ["icloud-cli", "-V"]) == .version)
+    #expect(try CLIParser().parse(arguments: ["icloud-cli", "--version"]) == .version)
+}
+
 @Test func rejectsInvalidSource() throws {
     #expect(throws: CLIParseError.invalidSource("icloud")) {
         try CLIParser().parse(arguments: ["icloud-cli", "safari", "tabs", "--source", "icloud"])

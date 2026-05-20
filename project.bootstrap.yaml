@@ -38,6 +38,8 @@ ci:
   fastChecks:
     - build
     - test
+    - coverage
+    - mutation
     - secrets
 release:
   enabled: false
