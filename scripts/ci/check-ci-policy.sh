@@ -41,6 +41,7 @@ if [[ -f "$fast_script" ]]; then
   require_line "$fast_script" "bash scripts/check-detect-secrets.sh --all-files"
   require_line "$fast_script" "bash scripts/check-privacy-fixtures.sh"
   require_line "$fast_script" "swift test"
+  require_line "$fast_script" "bash scripts/ci/test-coverage-indicators.sh"
   require_line "$fast_script" "swift build"
   require_line "$fast_script" "swift build -c release"
   require_line "$fast_script" "swift run icloud-cli --help"
