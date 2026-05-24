@@ -39,7 +39,7 @@ Run the same local gate that backs PR `CI Gate` before opening a PR:
 bash scripts/ci/run-fast-checks.sh
 ```
 
-The gate checks CI policy drift, shell syntax, secret patterns, privacy fixtures, Swift tests, debug and release builds, and CLI help output.
+The gate checks CI policy drift, shell syntax, secret patterns, privacy fixtures, Swift tests, source coverage with CRAP-style low-coverage indicators, debug and release builds, and CLI help output.
 
 ## Roadmap
 
