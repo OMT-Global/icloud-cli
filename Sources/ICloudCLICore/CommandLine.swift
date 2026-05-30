@@ -9,21 +9,25 @@ public struct SafariTabsOptions: Equatable, Sendable {
     public var source: SafariTabSource
     public var format: OutputFormat
     public var safariDirectory: URL
+    public var profile: String?
 
-    public init(source: SafariTabSource = .all, format: OutputFormat = .json, safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari")) {
+    public init(source: SafariTabSource = .all, format: OutputFormat = .json, safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari"), profile: String? = nil) {
         self.source = source
         self.format = format
         self.safariDirectory = safariDirectory
+        self.profile = profile
     }
 }
 
 public struct SafariBookmarksOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var safariDirectory: URL
+    public var profile: String?
 
-    public init(format: OutputFormat = .json, safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari")) {
+    public init(format: OutputFormat = .json, safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari"), profile: String? = nil) {
         self.format = format
         self.safariDirectory = safariDirectory
+        self.profile = profile
     }
 }
 
@@ -31,11 +35,13 @@ public struct SafariFrequentlyVisitedOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var safariDirectory: URL
     public var limit: Int
+    public var profile: String?
 
-    public init(format: OutputFormat = .json, safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari"), limit: Int = 20) {
+    public init(format: OutputFormat = .json, safariDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari"), limit: Int = 20, profile: String? = nil) {
         self.format = format
         self.safariDirectory = safariDirectory
         self.limit = limit
+        self.profile = profile
     }
 }
 
@@ -44,12 +50,14 @@ public struct DriveListOptions: Equatable, Sendable {
     public var rootDirectory: URL
     public var path: String?
     public var depth: Int
+    public var showStatus: Bool
 
-    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2) {
+    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2, showStatus: Bool = false) {
         self.format = format
         self.rootDirectory = rootDirectory
         self.path = path
         self.depth = depth
+        self.showStatus = showStatus
     }
 }
 
@@ -205,8 +213,9 @@ public struct SafariHistoryOptions: Equatable, Sendable {
     public var until: String?
     public var limit: Int
     public var redactURLs: Bool
+    public var profile: String?
 
-    public init(format: OutputFormat = .json, historyDatabase: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari/History.db"), confirmSensitive: Bool = false, since: String? = nil, until: String? = nil, limit: Int = 100, redactURLs: Bool = false) {
+    public init(format: OutputFormat = .json, historyDatabase: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari/History.db"), confirmSensitive: Bool = false, since: String? = nil, until: String? = nil, limit: Int = 100, redactURLs: Bool = false, profile: String? = nil) {
         self.format = format
         self.historyDatabase = historyDatabase
         self.confirmSensitive = confirmSensitive
@@ -214,6 +223,7 @@ public struct SafariHistoryOptions: Equatable, Sendable {
         self.until = until
         self.limit = limit
         self.redactURLs = redactURLs
+        self.profile = profile
     }
 }
 
@@ -303,6 +313,201 @@ public struct CacheOptions: Equatable, Sendable {
     }
 }
 
+public enum SnapshotRedaction: String, Equatable, Sendable {
+    case safe
+    case raw
+}
+
+public enum MetadataCommand: String, Codable, Equatable, Sendable {
+    case accountStatus
+    case backupStatus
+    case booksCollections
+    case booksList
+    case calendarAccounts
+    case calendarEvents
+    case calendarList
+    case driveErrors
+    case driveRecents
+    case driveShared
+    case driveStatus
+    case familyStatus
+    case findMyDevices
+    case findMyPeople
+    case freeformList
+    case healthSummary
+    case homeAccessories
+    case homeHomes
+    case homeRooms
+    case homeScenes
+    case mailAccounts
+    case mailMailboxes
+    case mailRecent
+    case musicPlaylists
+    case musicStatus
+    case musicTracks
+    case notesAccounts
+    case notesFolders
+    case notesShared
+    case notesTags
+    case permissionsDoctor
+    case photosSharedAlbums
+    case photosSharedLibrary
+    case remindersAssigned
+    case remindersFlagged
+    case remindersScheduled
+    case remindersToday
+    case safariCloudTabsList
+    case safariExtensionsList
+    case safariProfilesList
+    case snapshot
+    case stocksGroups
+    case stocksWatchlist
+    case taggedItems
+    case tagsList
+    case voiceMemosList
+    case weatherFavorites
+
+    public var tableName: String? {
+        switch self {
+        case .booksCollections: return "books_collections"
+        case .booksList: return "books"
+        case .calendarAccounts: return "calendar_accounts"
+        case .calendarEvents: return "calendar_events"
+        case .calendarList: return "calendar_calendars"
+        case .findMyDevices: return "findmy_devices"
+        case .findMyPeople: return "findmy_people"
+        case .freeformList: return "freeform_boards"
+        case .healthSummary: return "health_summary"
+        case .homeAccessories: return "home_accessories"
+        case .homeHomes: return "home_homes"
+        case .homeRooms: return "home_rooms"
+        case .homeScenes: return "home_scenes"
+        case .mailAccounts: return "mail_accounts"
+        case .mailMailboxes: return "mail_mailboxes"
+        case .mailRecent: return "mail_recent"
+        case .musicPlaylists: return "music_playlists"
+        case .musicStatus: return "music_status"
+        case .musicTracks: return "music_tracks"
+        case .notesAccounts: return "notes_accounts"
+        case .notesFolders: return "notes_folders"
+        case .notesShared: return "notes_shared"
+        case .notesTags: return "notes_tags"
+        case .photosSharedAlbums: return "photos_shared_albums"
+        case .photosSharedLibrary: return "photos_shared_library"
+        case .remindersAssigned, .remindersFlagged, .remindersScheduled, .remindersToday: return "reminders"
+        case .safariCloudTabsList: return "safari_cloud_tabs"
+        case .safariExtensionsList: return "safari_extensions"
+        case .safariProfilesList: return "safari_profiles"
+        case .stocksGroups: return "stocks_groups"
+        case .stocksWatchlist: return "stocks_watchlist"
+        case .voiceMemosList: return "voice_memos"
+        case .weatherFavorites: return "weather_favorites"
+        default: return nil
+        }
+    }
+
+    public var displayName: String {
+        rawValue.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1-$2", options: .regularExpression).lowercased()
+    }
+}
+
+public struct MetadataOptions: Equatable, Sendable {
+    public var format: OutputFormat
+    public var store: URL?
+    public var rootDirectory: URL?
+    public var output: URL?
+    public var include: [String]
+    public var redaction: SnapshotRedaction
+    public var account: String?
+    public var calendar: String?
+    public var collection: String?
+    public var device: String?
+    public var folder: String?
+    public var home: String?
+    public var mailbox: String?
+    public var path: String?
+    public var playlist: String?
+    public var profile: String?
+    public var room: String?
+    public var tag: String?
+    public var since: String?
+    public var until: String?
+    public var limit: Int
+    public var confirmSensitive: Bool
+    public var includeAttendees: Bool
+    public var includeCoordinates: Bool
+    public var includeHighlights: Bool
+    public var includeNotes: Bool
+    public var includeURLs: Bool
+    public var raw: Bool
+    public var downloadedOnly: Bool
+    public var cloudOnly: Bool
+
+    public init(
+        format: OutputFormat = .json,
+        store: URL? = nil,
+        rootDirectory: URL? = nil,
+        output: URL? = nil,
+        include: [String] = [],
+        redaction: SnapshotRedaction = .safe,
+        account: String? = nil,
+        calendar: String? = nil,
+        collection: String? = nil,
+        device: String? = nil,
+        folder: String? = nil,
+        home: String? = nil,
+        mailbox: String? = nil,
+        path: String? = nil,
+        playlist: String? = nil,
+        profile: String? = nil,
+        room: String? = nil,
+        tag: String? = nil,
+        since: String? = nil,
+        until: String? = nil,
+        limit: Int = 50,
+        confirmSensitive: Bool = false,
+        includeAttendees: Bool = false,
+        includeCoordinates: Bool = false,
+        includeHighlights: Bool = false,
+        includeNotes: Bool = false,
+        includeURLs: Bool = false,
+        raw: Bool = false,
+        downloadedOnly: Bool = false,
+        cloudOnly: Bool = false
+    ) {
+        self.format = format
+        self.store = store
+        self.rootDirectory = rootDirectory
+        self.output = output
+        self.include = include
+        self.redaction = redaction
+        self.account = account
+        self.calendar = calendar
+        self.collection = collection
+        self.device = device
+        self.folder = folder
+        self.home = home
+        self.mailbox = mailbox
+        self.path = path
+        self.playlist = playlist
+        self.profile = profile
+        self.room = room
+        self.tag = tag
+        self.since = since
+        self.until = until
+        self.limit = limit
+        self.confirmSensitive = confirmSensitive
+        self.includeAttendees = includeAttendees
+        self.includeCoordinates = includeCoordinates
+        self.includeHighlights = includeHighlights
+        self.includeNotes = includeNotes
+        self.includeURLs = includeURLs
+        self.raw = raw
+        self.downloadedOnly = downloadedOnly
+        self.cloudOnly = cloudOnly
+    }
+}
+
 public enum CLICommand: Equatable, Sendable {
     case cacheRead(CacheOptions)
     case cacheStatus(CacheOptions)
@@ -317,6 +522,7 @@ public enum CLICommand: Equatable, Sendable {
     case mapsRecents(MapsOptions)
     case messagesConversations(MessagesOptions)
     case messagesRecent(MessagesOptions)
+    case metadata(MetadataCommand, MetadataOptions)
     case newsHistory(NewsOptions)
     case newsTopics(NewsOptions)
     case notesList(NotesListOptions)
@@ -364,6 +570,126 @@ public struct CLIParser: Sendable {
         if tokens == ["--version"] || tokens == ["-V"] { return .version }
 
         let topCommand = tokens.removeFirst()
+        if topCommand == "snapshot" {
+            return .metadata(.snapshot, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "account" {
+            guard tokens.first == "status" else { throw CLIParseError.unknownCommand((["account"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.accountStatus, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "backup" {
+            guard tokens.first == "status" else { throw CLIParseError.unknownCommand((["backup"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.backupStatus, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "family" {
+            guard tokens.first == "status" else { throw CLIParseError.unknownCommand((["family"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.familyStatus, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "permissions" {
+            guard tokens.first == "doctor" else { throw CLIParseError.unknownCommand((["permissions"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.permissionsDoctor, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "calendar" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("calendar") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "accounts": return .metadata(.calendarAccounts, try parseMetadataOptions(tokens))
+            case "list": return .metadata(.calendarList, try parseMetadataOptions(tokens))
+            case "events": return .metadata(.calendarEvents, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["calendar", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "findmy" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("findmy") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "devices": return .metadata(.findMyDevices, try parseMetadataOptions(tokens))
+            case "people": return .metadata(.findMyPeople, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["findmy", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "mail" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("mail") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "accounts": return .metadata(.mailAccounts, try parseMetadataOptions(tokens))
+            case "mailboxes": return .metadata(.mailMailboxes, try parseMetadataOptions(tokens))
+            case "recent": return .metadata(.mailRecent, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["mail", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "books" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("books") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "collections": return .metadata(.booksCollections, try parseMetadataOptions(tokens))
+            case "list": return .metadata(.booksList, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["books", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "voice-memos" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["voice-memos"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.voiceMemosList, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "home" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("home") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "homes": return .metadata(.homeHomes, try parseMetadataOptions(tokens))
+            case "rooms": return .metadata(.homeRooms, try parseMetadataOptions(tokens))
+            case "accessories": return .metadata(.homeAccessories, try parseMetadataOptions(tokens))
+            case "scenes": return .metadata(.homeScenes, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["home", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "health" {
+            guard tokens.first == "summary" else { throw CLIParseError.unknownCommand((["health"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.healthSummary, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "freeform" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["freeform"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.freeformList, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "music" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("music") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "status": return .metadata(.musicStatus, try parseMetadataOptions(tokens))
+            case "playlists": return .metadata(.musicPlaylists, try parseMetadataOptions(tokens))
+            case "tracks": return .metadata(.musicTracks, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["music", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "stocks" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("stocks") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "watchlist": return .metadata(.stocksWatchlist, try parseMetadataOptions(tokens))
+            case "groups": return .metadata(.stocksGroups, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["stocks", subcommand] + tokens).joined(separator: " "))
+            }
+        }
+        if topCommand == "weather" {
+            guard tokens.first == "favorites" else { throw CLIParseError.unknownCommand((["weather"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.weatherFavorites, try parseMetadataOptions(tokens))
+        }
+        if topCommand == "tags" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("tags") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "list": return .metadata(.tagsList, try parseMetadataOptions(tokens))
+            case "items": return .metadata(.taggedItems, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["tags", subcommand] + tokens).joined(separator: " "))
+            }
+        }
         if topCommand == "storage" {
             guard tokens.first == "status" else { throw CLIParseError.unknownCommand((["storage"] + tokens).joined(separator: " ")) }
             tokens.removeFirst()
@@ -395,6 +721,10 @@ public struct CLIParser: Sendable {
             switch driveCommand {
             case "list": return .driveList(try parseDriveListOptions(tokens))
             case "containers": return .driveContainers(try parseDriveContainersOptions(tokens))
+            case "status": return .metadata(.driveStatus, try parseMetadataOptions(tokens))
+            case "errors": return .metadata(.driveErrors, try parseMetadataOptions(tokens))
+            case "shared": return .metadata(.driveShared, try parseMetadataOptions(tokens))
+            case "recents": return .metadata(.driveRecents, try parseMetadataOptions(tokens))
             default: throw CLIParseError.unknownCommand((["drive", driveCommand] + tokens).joined(separator: " "))
             }
         }
@@ -409,13 +739,22 @@ public struct CLIParser: Sendable {
             switch photosCommand {
             case "screenshots": return .photosScreenshots(try parsePhotosScreenshotsOptions(tokens))
             case "list": return .photosList(try parsePhotosListOptions(tokens))
+            case "shared-albums": return .metadata(.photosSharedAlbums, try parseMetadataOptions(tokens))
+            case "shared-library": return .metadata(.photosSharedLibrary, try parseMetadataOptions(tokens))
             default: throw CLIParseError.unknownCommand((["photos", photosCommand] + tokens).joined(separator: " "))
             }
         }
         if topCommand == "notes" {
-            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["notes"] + tokens).joined(separator: " ")) }
+            guard let notesCommand = tokens.first else { throw CLIParseError.unknownCommand("notes") }
             tokens.removeFirst()
-            return .notesList(try parseNotesListOptions(tokens))
+            switch notesCommand {
+            case "list": return .notesList(try parseNotesListOptions(tokens))
+            case "accounts": return .metadata(.notesAccounts, try parseMetadataOptions(tokens))
+            case "folders": return .metadata(.notesFolders, try parseMetadataOptions(tokens))
+            case "tags": return .metadata(.notesTags, try parseMetadataOptions(tokens))
+            case "shared": return .metadata(.notesShared, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["notes", notesCommand] + tokens).joined(separator: " "))
+            }
         }
         if topCommand == "reminders" {
             guard let remindersCommand = tokens.first else { throw CLIParseError.unknownCommand("reminders") }
@@ -423,6 +762,10 @@ public struct CLIParser: Sendable {
             switch remindersCommand {
             case "list": return .remindersList(try parseRemindersListOptions(tokens))
             case "lists": return .remindersLists(try parseRemindersListOptions(tokens))
+            case "flagged": return .metadata(.remindersFlagged, try parseMetadataOptions(tokens))
+            case "today": return .metadata(.remindersToday, try parseMetadataOptions(tokens))
+            case "scheduled": return .metadata(.remindersScheduled, try parseMetadataOptions(tokens))
+            case "assigned": return .metadata(.remindersAssigned, try parseMetadataOptions(tokens))
             default: throw CLIParseError.unknownCommand((["reminders", remindersCommand] + tokens).joined(separator: " "))
             }
         }
@@ -480,10 +823,22 @@ public struct CLIParser: Sendable {
         case "bookmarks": return .safariBookmarks(try parseSafariBookmarksOptions(tokens))
         case "reading-list": return .safariReadingList(try parseSafariBookmarksOptions(tokens))
         case "frequently-visited": return .safariFrequentlyVisited(try parseSafariFrequentlyVisitedOptions(tokens))
-        case "cloud-tabs":
-            guard tokens.first == "probe" else { throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " ")) }
+        case "profiles":
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " ")) }
             tokens.removeFirst()
-            return .cloudTabsProbe(try parseCloudTabsProbeOptions(tokens))
+            return .metadata(.safariProfilesList, try parseMetadataOptions(tokens))
+        case "extensions":
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            return .metadata(.safariExtensionsList, try parseMetadataOptions(tokens))
+        case "cloud-tabs":
+            guard let cloudTabsCommand = tokens.first else { throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            switch cloudTabsCommand {
+            case "probe": return .cloudTabsProbe(try parseCloudTabsProbeOptions(tokens))
+            case "list": return .metadata(.safariCloudTabsList, try parseMetadataOptions(tokens))
+            default: throw CLIParseError.unknownCommand((["safari", safariCommand, cloudTabsCommand] + tokens).joined(separator: " "))
+            }
         default:
             throw CLIParseError.unknownCommand((["safari", safariCommand] + tokens).joined(separator: " "))
         }
@@ -500,6 +855,7 @@ public struct CLIParser: Sendable {
                 options.source = source
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--safari-dir": options.safariDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--profile": options.profile = try value(after: token, in: tokens, at: &index)
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -514,6 +870,7 @@ public struct CLIParser: Sendable {
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--safari-dir": options.safariDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--profile": options.profile = try value(after: token, in: tokens, at: &index)
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -528,6 +885,7 @@ public struct CLIParser: Sendable {
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--safari-dir": options.safariDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--profile": options.profile = try value(after: token, in: tokens, at: &index)
             case "--limit":
                 let rawValue = try value(after: token, in: tokens, at: &index)
                 guard let limit = Int(rawValue), limit >= 0 else { throw CLIParseError.missingValue(token) }
@@ -547,6 +905,7 @@ public struct CLIParser: Sendable {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--icloud-root": options.rootDirectory = try parseURL(after: token, in: tokens, at: &index)
             case "--path": options.path = try value(after: token, in: tokens, at: &index)
+            case "--show-status": options.showStatus = true
             case "--depth":
                 let rawValue = try value(after: token, in: tokens, at: &index)
                 guard let depth = Int(rawValue), depth >= 0 else { throw CLIParseError.missingValue(token) }
@@ -756,6 +1115,7 @@ public struct CLIParser: Sendable {
             case "--until": options.until = try value(after: token, in: tokens, at: &index)
             case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
             case "--redact-urls": options.redactURLs = true
+            case "--profile": options.profile = try value(after: token, in: tokens, at: &index)
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -873,6 +1233,60 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseMetadataOptions(_ tokens: [String]) throws -> MetadataOptions {
+        var options = MetadataOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--store", "--metadata-store", "--calendar-store", "--findmy-store", "--mail-store", "--books-store", "--health-store", "--notes-store", "--photos-store", "--safari-store", "--music-store", "--weather-store", "--stocks-store", "--freeform-store", "--home-store", "--voice-memos-store":
+                options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--cache-file":
+                options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--icloud-root", "--root":
+                options.rootDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--output":
+                options.output = try parseURL(after: token, in: tokens, at: &index)
+            case "--include":
+                options.include = try value(after: token, in: tokens, at: &index)
+                    .split(separator: ",")
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            case "--redaction":
+                let raw = try value(after: token, in: tokens, at: &index)
+                guard let redaction = SnapshotRedaction(rawValue: raw) else { throw CLIParseError.missingValue(token) }
+                options.redaction = redaction
+            case "--account": options.account = try value(after: token, in: tokens, at: &index)
+            case "--calendar": options.calendar = try value(after: token, in: tokens, at: &index)
+            case "--collection": options.collection = try value(after: token, in: tokens, at: &index)
+            case "--device": options.device = try value(after: token, in: tokens, at: &index)
+            case "--folder": options.folder = try value(after: token, in: tokens, at: &index)
+            case "--home": options.home = try value(after: token, in: tokens, at: &index)
+            case "--mailbox": options.mailbox = try value(after: token, in: tokens, at: &index)
+            case "--path": options.path = try value(after: token, in: tokens, at: &index)
+            case "--playlist": options.playlist = try value(after: token, in: tokens, at: &index)
+            case "--profile": options.profile = try value(after: token, in: tokens, at: &index)
+            case "--room": options.room = try value(after: token, in: tokens, at: &index)
+            case "--tag": options.tag = try value(after: token, in: tokens, at: &index)
+            case "--since": options.since = try value(after: token, in: tokens, at: &index)
+            case "--until": options.until = try value(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--include-attendees": options.includeAttendees = true
+            case "--include-coordinates": options.includeCoordinates = true
+            case "--include-highlights": options.includeHighlights = true
+            case "--include-notes": options.includeNotes = true
+            case "--include-urls": options.includeURLs = true
+            case "--raw": options.raw = true
+            case "--downloaded": options.downloadedOnly = true
+            case "--cloud-only": options.cloudOnly = true
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseFormat(after option: String, in tokens: [String], at index: inout Int) throws -> OutputFormat {
         let rawValue = try value(after: option, in: tokens, at: &index)
         guard let format = OutputFormat(rawValue: rawValue) else { throw CLIParseError.invalidFormat(rawValue) }
@@ -899,37 +1313,72 @@ public enum CLIHelp {
 icloud-cli \(version)
 
 Usage:
+  icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
+  icloud-cli account status [--format json|text] [--cache-file PATH]
+  icloud-cli backup status [--format json|text] [--cache-file PATH]
+  icloud-cli family status [--format json|text] [--cache-file PATH]
   icloud-cli storage status [--format json|text] [--cache-file PATH]
   icloud-cli focus status [--format json|text] [--focus-dir PATH]
   icloud-cli devices list [--format json|text] [--cache-file PATH]
   icloud-cli wallet passes [--type PASS_TYPE] [--active-only] [--format json|text] [--passes-dir PATH]
   icloud-cli handoff list [--limit N] [--format json|text] [--handoff-dir PATH]
-  icloud-cli drive list [--path PATH] [--depth N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive list [--path PATH] [--depth N] [--show-status] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive status [--path PATH] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive errors [--path PATH] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive shared [--path PATH] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive recents [--since ISO8601] [--limit N] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
   icloud-cli photos list [--format json|text] [--photos-library PATH]
+  icloud-cli photos shared-albums [--format json|text] [--photos-store PATH]
+  icloud-cli photos shared-library [--format json|text] [--photos-store PATH]
   icloud-cli notes list [--folder NAME] [--modified-since ISO8601] [--include-body] [--format json|text] [--notes-store PATH]
+  icloud-cli notes accounts|folders|tags|shared [--format json|text] [--notes-store PATH]
   icloud-cli reminders lists [--format json|text] [--reminders-store PATH]
   icloud-cli reminders list [--list NAME] [--due-before ISO8601] [--due-after ISO8601] [--completed] [--format json|text] [--reminders-store PATH]
+  icloud-cli reminders flagged|today|scheduled|assigned [--include-notes] [--since ISO8601] [--until ISO8601] [--limit N] [--format json|text] [--reminders-store PATH]
+  icloud-cli calendar accounts|list|events [--since ISO8601] [--until ISO8601] [--include-attendees] [--include-notes] [--format json|text] [--calendar-store PATH]
   icloud-cli contacts list [--search QUERY] [--limit N] [--include-notes] [--format json|text] [--addressbook-db PATH]
+  icloud-cli findmy devices|people [--include-coordinates] [--format json|text] [--findmy-store PATH]
+  icloud-cli mail accounts|mailboxes [--account NAME] [--format json|text] [--mail-store PATH]
+  icloud-cli mail recent [--confirm-sensitive] [--account NAME] [--mailbox NAME] [--limit N] [--format json|text] [--mail-store PATH]
   icloud-cli messages conversations [--format json|text] [--chat-db PATH]
   icloud-cli messages recent [--confirm-sensitive] [--include-body] [--since ISO8601] [--limit N] [--format json|text] [--chat-db PATH]
   icloud-cli maps favorites [--format json|text] [--maps-store PATH]
   icloud-cli maps recents [--limit N] [--format json|text] [--maps-store PATH]
   icloud-cli news history [--since ISO8601] [--limit N] [--format json|text] [--news-store PATH]
   icloud-cli news topics [--format json|text] [--news-store PATH]
+  icloud-cli books collections|list [--collection NAME] [--include-highlights] [--limit N] [--format json|text] [--books-store PATH]
+  icloud-cli voice-memos list [--folder NAME] [--since ISO8601] [--until ISO8601] [--limit N] [--format json|text] [--voice-memos-store PATH]
+  icloud-cli home homes|rooms|accessories|scenes [--home NAME] [--room NAME] [--format json|text] [--home-store PATH]
+  icloud-cli health summary --confirm-sensitive [--format json|text] [--health-store PATH]
+  icloud-cli freeform list [--folder NAME] [--since ISO8601] [--limit N] [--format json|text] [--freeform-store PATH]
+  icloud-cli music status|playlists|tracks [--playlist NAME] [--downloaded] [--cloud-only] [--limit N] [--format json|text] [--music-store PATH]
+  icloud-cli stocks watchlist|groups [--format json|text] [--stocks-store PATH]
+  icloud-cli weather favorites [--include-coordinates] [--format json|text] [--weather-store PATH]
+  icloud-cli tags list [--format json|text] [--store PATH]
+  icloud-cli tags items --tag NAME [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli permissions doctor [--format json|text]
   icloud-cli watch [--interval SECONDS] [--output-dir PATH] [--commands COMMAND,...] [--once]
   icloud-cli cache read COMMAND [--format json|text] [--output-dir PATH]
   icloud-cli cache status [--format json|text] [--output-dir PATH]
-  icloud-cli safari tabs [--source all|current-session|last-session] [--format json|text] [--safari-dir PATH]
-  icloud-cli safari history [--confirm-sensitive] [--since ISO8601] [--until ISO8601] [--limit N] [--redact-urls] [--format json|text] [--history-db PATH]
-  icloud-cli safari bookmarks [--format json|text] [--safari-dir PATH]
-  icloud-cli safari reading-list [--format json|text] [--safari-dir PATH]
-  icloud-cli safari frequently-visited [--limit N] [--format json|text] [--safari-dir PATH]
+  icloud-cli safari tabs [--source all|current-session|last-session] [--profile NAME|all] [--format json|text] [--safari-dir PATH]
+  icloud-cli safari history [--confirm-sensitive] [--since ISO8601] [--until ISO8601] [--limit N] [--redact-urls] [--profile NAME|all] [--format json|text] [--history-db PATH]
+  icloud-cli safari bookmarks [--profile NAME|all] [--format json|text] [--safari-dir PATH]
+  icloud-cli safari reading-list [--profile NAME|all] [--format json|text] [--safari-dir PATH]
+  icloud-cli safari frequently-visited [--limit N] [--profile NAME|all] [--format json|text] [--safari-dir PATH]
   icloud-cli safari cloud-tabs probe [--format json|text] [--safari-dir PATH]
+  icloud-cli safari cloud-tabs list --confirm-sensitive [--device NAME] [--include-urls] [--raw] [--format json|text] [--safari-store PATH]
+  icloud-cli safari profiles list [--format json|text] [--safari-store PATH]
+  icloud-cli safari extensions list [--profile NAME] [--format json|text] [--safari-store PATH]
 
 Commands:
+  snapshot       Emit a conservative redacted operator status payload.
+  account status
+                 Report iCloud sign-in and service enablement from local preferences.
+  backup status  Report locally cached iCloud Backup state per device.
+  family status  Report locally cached Family Sharing membership and subscriptions.
   storage status Report locally cached iCloud storage quota.
   focus status   Report locally cached Focus / Do Not Disturb status.
   devices list   List locally cached iCloud registered devices.
@@ -938,6 +1387,10 @@ Commands:
   drive list     List files under the local iCloud Drive root without reading file contents.
   drive containers
                  List top-level iCloud app containers.
+  drive status   Summarize local iCloud Drive sync states.
+  drive errors   List locally reported iCloud Drive sync errors.
+  drive shared   List locally discoverable shared iCloud Drive items.
+  drive recents  List recently modified iCloud Drive items.
   shortcuts list List local Shortcuts metadata without executing shortcuts.
   photos screenshots
                  List screenshot file metadata without reading pixels.
@@ -953,6 +1406,20 @@ Commands:
   maps recents   List Maps recent-place metadata.
   news history   List News reading-history metadata.
   news topics    List followed News topics/channels.
+  calendar       Inventory local Calendar accounts, calendars, and events.
+  findmy         Inventory locally cached Find My device and people state.
+  mail           Inventory local Mail accounts, mailboxes, and recent headers.
+  books          Inventory Apple Books collections and library metadata.
+  voice-memos    Inventory Voice Memos recording metadata.
+  home           Inventory HomeKit homes, rooms, accessories, and scenes.
+  health summary Aggregate HealthKit counts only after --confirm-sensitive.
+  freeform list  Inventory Freeform board metadata.
+  music          Inventory Music library status, playlists, and tracks.
+  stocks         Inventory Stocks watchlists and groups.
+  weather        Inventory Weather favorite locations.
+  tags           Inventory Finder tag names and tagged iCloud Drive items.
+  permissions doctor
+                 Probe command source paths without reading payload content.
   watch          Refresh local JSON cache files for OpenClaw polling.
   cache read     Read one cached command output.
   cache status   Report age and ok/error state for cached commands.
@@ -966,6 +1433,10 @@ Commands:
                  Read Safari frequently visited sites from TopSites.plist.
   safari cloud-tabs probe
                  Inspect whether Safari's cross-device tab store is present and readable.
+  safari cloud-tabs list
+                 List cross-device Safari tab summaries only after --confirm-sensitive.
+  safari profiles / extensions
+                 Inventory Safari profile and extension metadata.
 """
     }
 }

@@ -78,6 +78,9 @@ public struct CommandRunner: Sendable {
                 let messages = try LocalSQLiteInventoryReader(database: options.chatDatabase).recentMessages(confirmSensitive: options.confirmSensitive, includeBody: options.includeBody, since: options.since, limit: options.limit)
                 output(try render(messages, format: options.format))
                 return 0
+            case .metadata(let command, let options):
+                output(try runMetadata(command: command, options: options))
+                return 0
             case .newsHistory(let options):
                 let articles = try LocalSQLiteInventoryReader(database: options.store).newsHistory(since: options.since, limit: options.limit)
                 output(try render(articles, format: options.format))
@@ -107,23 +110,28 @@ public struct CommandRunner: Sendable {
                 output(try render(lists, format: options.format))
                 return 0
             case .safariBookmarks(let options):
-                let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let bookmarks = try SafariBookmarksReader(safariDirectory: directory).readBookmarks()
                 output(try render(bookmarks, format: options.format))
                 return 0
             case .safariFrequentlyVisited(let options):
-                let sites = try SafariFrequentlyVisitedReader(safariDirectory: options.safariDirectory).readSites(limit: options.limit)
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let sites = try SafariFrequentlyVisitedReader(safariDirectory: directory).readSites(limit: options.limit)
                 output(try render(sites, format: options.format))
                 return 0
             case .safariHistory(let options):
-                let history = try LocalSQLiteInventoryReader(database: options.historyDatabase).safariHistory(confirmSensitive: options.confirmSensitive, since: options.since, until: options.until, limit: options.limit, redactURLs: options.redactURLs)
+                let database = safariHistoryDatabase(for: options)
+                let history = try LocalSQLiteInventoryReader(database: database).safariHistory(confirmSensitive: options.confirmSensitive, since: options.since, until: options.until, limit: options.limit, redactURLs: options.redactURLs)
                 output(try render(history, format: options.format))
                 return 0
             case .safariReadingList(let options):
-                let items = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readReadingList()
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let items = try SafariBookmarksReader(safariDirectory: directory).readReadingList()
                 output(try render(items, format: options.format))
                 return 0
             case .safariTabs(let options):
-                let tabs = try SafariTabsReader(safariDirectory: options.safariDirectory).readTabs(source: options.source)
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let tabs = try SafariTabsReader(safariDirectory: directory).readTabs(source: options.source)
                 output(try render(tabs, format: options.format))
                 return 0
             case .shortcutsList(let options):
@@ -151,6 +159,65 @@ public struct CommandRunner: Sendable {
         } catch {
             errorOutput(error.localizedDescription)
             return 1
+        }
+    }
+
+    private func safariHistoryDatabase(for options: SafariHistoryOptions) -> URL {
+        guard let profile = options.profile?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !profile.isEmpty,
+            profile.lowercased() != "all"
+        else {
+            return options.historyDatabase
+        }
+        let baseDirectory = options.historyDatabase.deletingLastPathComponent()
+        return SafariProfileDirectoryResolver()
+            .directory(baseDirectory: baseDirectory, profile: profile)
+            .appendingPathComponent(options.historyDatabase.lastPathComponent)
+    }
+
+    private func runMetadata(command: MetadataCommand, options: MetadataOptions) throws -> String {
+        switch command {
+        case .accountStatus:
+            let status = try AccountStatusReader(cacheFile: options.store ?? LocalMetadataStoreReader.defaultStore(for: command)).readStatus()
+            return try render(status, format: options.format)
+        case .backupStatus:
+            let status = try BackupStatusReader(cacheFile: options.store ?? LocalMetadataStoreReader.defaultStore(for: command)).readStatus()
+            return try render(status, format: options.format)
+        case .familyStatus:
+            let status = try FamilyStatusReader(cacheFile: options.store ?? LocalMetadataStoreReader.defaultStore(for: command)).readStatus()
+            return try render(status, format: options.format)
+        case .permissionsDoctor:
+            return try render(PermissionsDoctor().diagnose(), format: options.format)
+        case .snapshot:
+            let report = SnapshotBuilder().build(options: options)
+            let rendered = try render(report, format: options.format)
+            if let output = options.output {
+                try rendered.write(to: output, atomically: true, encoding: .utf8)
+            }
+            return rendered
+        case .driveStatus:
+            let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
+            return try render(try reader.syncStatus(path: options.path), format: options.format)
+        case .driveErrors:
+            let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
+            return try render(try reader.errorFiles(path: options.path), format: options.format)
+        case .driveShared:
+            let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
+            return try render(try reader.sharedItems(path: options.path), format: options.format)
+        case .driveRecents:
+            let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
+            return try render(try reader.recentFiles(since: options.since, limit: options.limit), format: options.format)
+        case .tagsList:
+            let reader = FinderTagsReader(preferencesFile: options.store ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/SyncedPreferences/com.apple.finder.plist"), driveRoot: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
+            return try render(try reader.listTags(), format: options.format)
+        case .taggedItems:
+            guard let tag = options.tag else { throw CLIParseError.missingValue("--tag") }
+            let reader = FinderTagsReader(preferencesFile: options.store ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/SyncedPreferences/com.apple.finder.plist"), driveRoot: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
+            return try render(try reader.items(tag: tag, path: options.path, limit: options.limit), format: options.format)
+        default:
+            let store = options.store ?? LocalMetadataStoreReader.defaultStore(for: command)
+            let rows = try LocalMetadataStoreReader(database: store).rows(for: command, options: options)
+            return try render(rows, format: options.format)
         }
     }
 
@@ -190,6 +257,48 @@ public struct CommandRunner: Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         return String(decoding: try encoder.encode(value), as: UTF8.self)
+    }
+
+    public func render(_ rows: [MetadataRow], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(rows), as: UTF8.self)
+        case .text:
+            return rows.map { row in
+                let fields = row.fields
+                    .sorted { $0.key < $1.key }
+                    .compactMap { key, value in value.stringValue.map { "\(key)=\($0)" } }
+                    .joined(separator: " ")
+                return fields.isEmpty ? row.kind : "\(row.kind): \(fields)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ report: SnapshotReport, format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(report), as: UTF8.self)
+        case .text:
+            return report.entries.map { entry in
+                let status = entry.ok ? "ok" : "error"
+                return "\(entry.command): \(status) - \(entry.summary)"
+            }.joined(separator: "\n")
+        }
+    }
+
+    public func render(_ probes: [PermissionProbe], format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(probes), as: UTF8.self)
+        case .text:
+            return probes.map { "\($0.command): \($0.status) - \($0.hint)" }.joined(separator: "\n")
+        }
     }
 
 

@@ -14,8 +14,9 @@ The CLI may read or derive:
 - Contacts names, emails, phones, organizations, and optional notes.
 - Messages conversation metadata and optional recent message bodies.
 - Photos/screenshots, Maps, and News metadata.
+- Account, backup, Family Sharing, Calendar, Mail, Find My, Health aggregate, Home, Books, Music, Weather, Stocks, Freeform, Voice Memos, Finder tag, shared Photos, and Safari profile/extension metadata.
 - Safari session file paths and read errors.
-- Future Safari iCloud tab metadata from local sync stores such as `CloudTabs.db`.
+- Safari iCloud tab metadata from local sync stores such as `CloudTabs.db`.
 - Future Apple account, iCloud settings, or device-sync metadata.
 - Local macOS permission state, including Full Disk Access or Automation failures.
 
@@ -82,6 +83,8 @@ This keeps static privacy checks and Swift tests ahead of the standalone build.
 
 `icloud-cli drive list` and `icloud-cli drive containers` read filesystem metadata under `~/Library/Mobile Documents` only. They do not read file contents. JSON output includes real paths by design for direct operator use; logs and status summaries should redact the home directory. Evicted `.icloud` stubs are reported as metadata with `sizeBytes: null`.
 
+`icloud-cli drive status`, `drive errors`, `drive shared`, and `drive recents` reuse the same local iCloud Drive filesystem read surface. They summarize sync state, recent modification dates, and best-effort shared item metadata without opening file contents or making network requests.
+
 
 ## Shortcuts inventory
 
@@ -105,3 +108,23 @@ This keeps static privacy checks and Swift tests ahead of the standalone build.
 The Photos, Notes, Reminders, Safari history, Messages, Contacts, Maps, and News commands are read-only local inventory surfaces. Synthetic tests use controlled fixture stores; real Apple private schemas can vary by macOS release, so schema adapters should stay conservative and fail closed when tables are unavailable.
 
 `icloud-cli watch` defaults to lower-risk polling commands only: `safari-tabs`, `drive-list`, `photos-screenshots`, and `storage-status`. Operators may add commands explicitly, but high-sensitivity commands such as Safari history, Messages, and Contacts are intentionally excluded from the default cache refresh set.
+
+
+## Broad Local Metadata Commands
+
+The second inventory wave adds local-only command trees for `account status`, `backup status`, `family status`, `calendar`, `findmy`, `mail`, `books`, `voice-memos`, `home`, `health summary`, `photos shared-albums`, `photos shared-library`, `safari cloud-tabs list`, `safari profiles list`, `safari extensions list`, `tags`, `weather`, `stocks`, `music`, `freeform`, `notes accounts/folders/tags/shared`, and `reminders flagged/today/scheduled/assigned`.
+
+These commands use preference/plist readers for account, backup, Family Sharing, permissions, and snapshot status, plus best-effort SQLite metadata readers for Apple private cache stores when a stable local table shape is known or supplied by fixtures. All adapters are read-only and local-only. They do not refresh iCloud, contact Apple services, control apps, trigger HomeKit accessories, execute shortcuts, read audio/photo/book/media payloads, or emit auth tokens. Private Apple schemas can vary across macOS releases, so commands fail closed when expected local tables are absent.
+
+High-sensitivity gates:
+
+- `icloud-cli safari cloud-tabs list`, `icloud-cli mail recent`, and `icloud-cli health summary` require `--confirm-sensitive`.
+- `findmy` and `weather` omit coordinates unless `--include-coordinates` is passed.
+- `calendar events` omits attendees and notes unless `--include-attendees` or `--include-notes` is passed.
+- `books list` omits highlight counts unless `--include-highlights` is passed and never emits quoted annotation text.
+- `reminders` smart lists omit notes unless `--include-notes` is passed.
+- `safari cloud-tabs list` defaults to device/tab summaries; `--include-urls` emits scheme and host only, while `--raw` is required with `--include-urls` for full URLs.
+
+`icloud-cli snapshot` composes lower-risk command summaries into one redacted operator payload for terminal use and OpenClaw polling. The default snapshot excludes Safari history, Messages, Contacts, Mail recent headers, Find My people, Health, raw CloudTabs URLs, Notes bodies, and location coordinates.
+
+`icloud-cli permissions doctor` probes source path existence/readability only. It does not decode plist/SQLite payloads and does not require `--confirm-sensitive`; sensitive commands are reported as `needs-confirm-sensitive` so automation can distinguish permission issues from explicit operator gates.

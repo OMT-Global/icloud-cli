@@ -9,7 +9,11 @@ public enum DriveSortKey: String, Sendable {
 public enum ICloudFileStatus: String, Codable, Equatable, Sendable {
     case downloaded
     case evicted
+    case notDownloaded
+    case downloading
+    case uploaded
     case uploading
+    case error
     case unknown
 }
 
@@ -27,6 +31,29 @@ public struct ICloudDriveContainer: Codable, Equatable, Sendable {
     public let displayName: String
     public let sizeBytes: Int64?
     public let modifiedAt: Date?
+}
+
+public struct ICloudDriveSyncSummary: Codable, Equatable, Sendable {
+    public let downloadedCount: Int
+    public let cloudOnlyCount: Int
+    public let downloadingCount: Int
+    public let uploadedCount: Int
+    public let uploadingCount: Int
+    public let errorCount: Int
+    public let unknownCount: Int
+}
+
+public struct ICloudDriveErrorEntry: Codable, Equatable, Sendable {
+    public let path: String
+    public let category: String
+}
+
+public struct ICloudDriveSharedItem: Codable, Equatable, Sendable {
+    public let path: String
+    public let owner: String?
+    public let role: String?
+    public let dateShared: Date?
+    public let iCloudStatus: ICloudFileStatus
 }
 
 public enum DriveInventoryError: Error, LocalizedError, Equatable {
@@ -54,6 +81,45 @@ public struct ICloudDriveInventoryReader: Sendable {
         var result: [ICloudDriveFile] = []
         try walkFiles(at: startURL, currentDepth: 0, maxDepth: maxDepth, into: &result)
         return result.sorted { lhs, rhs in lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending }
+    }
+
+    public func syncStatus(path requestedPath: String? = nil) throws -> ICloudDriveSyncSummary {
+        let files = try listFiles(path: requestedPath, depth: Int.max)
+        return ICloudDriveSyncSummary(
+            downloadedCount: files.filter { $0.iCloudStatus == .downloaded }.count,
+            cloudOnlyCount: files.filter { $0.iCloudStatus == .evicted || $0.iCloudStatus == .notDownloaded }.count,
+            downloadingCount: files.filter { $0.iCloudStatus == .downloading }.count,
+            uploadedCount: files.filter { $0.iCloudStatus == .uploaded }.count,
+            uploadingCount: files.filter { $0.iCloudStatus == .uploading }.count,
+            errorCount: files.filter { $0.iCloudStatus == .error }.count,
+            unknownCount: files.filter { $0.iCloudStatus == .unknown }.count
+        )
+    }
+
+    public func errorFiles(path requestedPath: String? = nil) throws -> [ICloudDriveErrorEntry] {
+        try listFiles(path: requestedPath, depth: Int.max)
+            .filter { $0.iCloudStatus == .error }
+            .map { ICloudDriveErrorEntry(path: $0.path, category: "icloud-sync-error") }
+    }
+
+    public func recentFiles(since: String? = nil, limit: Int = 50) throws -> [ICloudDriveFile] {
+        let floor = since.flatMap { ISO8601DateFormatter().date(from: $0) }
+        return try listFiles(depth: Int.max)
+            .filter { file in
+                guard let floor else { return true }
+                return file.modifiedAt.map { $0 >= floor } ?? false
+            }
+            .sorted { ($0.modifiedAt ?? .distantPast, $0.path) > ($1.modifiedAt ?? .distantPast, $1.path) }
+            .prefix(max(1, limit))
+            .map { $0 }
+    }
+
+    public func sharedItems(path requestedPath: String? = nil) throws -> [ICloudDriveSharedItem] {
+        try listFiles(path: requestedPath, depth: Int.max)
+            .filter { $0.path.localizedCaseInsensitiveContains(".shared") }
+            .map { file in
+                ICloudDriveSharedItem(path: file.path, owner: nil, role: nil, dateShared: file.modifiedAt, iCloudStatus: file.iCloudStatus)
+            }
     }
 
     public func listContainers(sortBy: DriveSortKey = .name) throws -> [ICloudDriveContainer] {
