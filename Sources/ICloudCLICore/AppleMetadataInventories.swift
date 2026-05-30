@@ -1,0 +1,569 @@
+import Foundation
+
+public enum MetadataValue: Codable, Equatable, Sendable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case null
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .int(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else {
+            self = .string(try container.decode(String.self))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .int(let value): try container.encode(value)
+        case .double(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+
+    public var stringValue: String? {
+        switch self {
+        case .string(let value): return value
+        case .int(let value): return String(value)
+        case .double(let value): return String(value)
+        case .bool(let value): return value ? "true" : "false"
+        case .null: return nil
+        }
+    }
+
+    public var intValue: Int? {
+        switch self {
+        case .int(let value): return value
+        case .string(let value): return Int(value)
+        default: return nil
+        }
+    }
+}
+
+public struct MetadataRow: Codable, Equatable, Sendable {
+    public let kind: String
+    public let fields: [String: MetadataValue]
+
+    public init(kind: String, fields: [String: MetadataValue]) {
+        self.kind = kind
+        self.fields = fields
+    }
+
+    public func string(_ key: String) -> String? {
+        fields[key]?.stringValue
+    }
+
+    public func int(_ key: String) -> Int? {
+        fields[key]?.intValue
+    }
+}
+
+public struct LocalMetadataStoreReader: Sendable {
+    public let database: URL
+
+    public init(database: URL) {
+        self.database = database
+    }
+
+    public func rows(for command: MetadataCommand, options: MetadataOptions = MetadataOptions()) throws -> [MetadataRow] {
+        try requireConfirmationIfNeeded(command: command, options: options)
+        guard let tableName = command.tableName else {
+            throw LocalInventoryError.sqliteFailure("No metadata table configured for \(command.displayName)")
+        }
+        var rows = try query("SELECT * FROM \(tableName)\(whereClause(for: command, options: options))\(orderClause(for: command)) LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));")
+            .map { MetadataRow(kind: command.displayName, fields: $0) }
+        rows = rows.map { redact(row: $0, command: command, options: options) }
+        return rows
+    }
+
+    public static func defaultStore(for command: MetadataCommand) -> URL {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        switch command {
+        case .calendarAccounts, .calendarEvents, .calendarList:
+            return home.appendingPathComponent("Library/Calendars/Calendar Cache")
+        case .findMyDevices, .findMyPeople:
+            return home.appendingPathComponent("Library/Caches/com.apple.findmy.fmipcore/findmy.sqlite")
+        case .mailAccounts, .mailMailboxes, .mailRecent:
+            return home.appendingPathComponent("Library/Mail/V10/MailData/Envelope Index")
+        case .booksCollections, .booksList:
+            return home.appendingPathComponent("Library/Containers/com.apple.iBooksX/Data/Documents/BKLibrary/BKLibrary.sqlite")
+        case .healthSummary:
+            return home.appendingPathComponent("Library/Health/healthdb_secure.sqlite")
+        case .photosSharedAlbums, .photosSharedLibrary:
+            return home.appendingPathComponent("Pictures/Photos Library.photoslibrary/database/photos.sqlite")
+        case .safariCloudTabsList:
+            return home.appendingPathComponent("Library/Safari/CloudTabs.db")
+        case .safariExtensionsList, .safariProfilesList:
+            return home.appendingPathComponent("Library/Safari/SafariMetadata.sqlite")
+        case .musicPlaylists, .musicStatus, .musicTracks:
+            return home.appendingPathComponent("Music/Music/Music Library.musiclibrary/Library.musicdb")
+        case .weatherFavorites:
+            return home.appendingPathComponent("Library/Containers/com.apple.weather/Data/Library/Application Support/weather.sqlite")
+        case .stocksGroups, .stocksWatchlist:
+            return home.appendingPathComponent("Library/Containers/com.apple.stocks/Data/Library/Application Support/stocks.sqlite")
+        case .freeformList:
+            return home.appendingPathComponent("Library/Containers/com.apple.freeform/Data/Library/Application Support/freeform.sqlite")
+        case .homeAccessories, .homeHomes, .homeRooms, .homeScenes:
+            return home.appendingPathComponent("Library/Application Support/com.apple.homed/Home.sqlite")
+        case .voiceMemosList:
+            return home.appendingPathComponent("Library/Application Support/com.apple.voicememos/Recordings.db")
+        case .notesAccounts, .notesFolders, .notesShared, .notesTags:
+            return home.appendingPathComponent("Library/Group Containers/group.com.apple.notes/NoteStore.sqlite")
+        case .remindersAssigned, .remindersFlagged, .remindersScheduled, .remindersToday:
+            return home.appendingPathComponent("Library/Reminders/reminders.sqlite")
+        default:
+            return home.appendingPathComponent("Library/Preferences/MobileMeAccounts.plist")
+        }
+    }
+
+    private func query(_ sql: String) throws -> [[String: MetadataValue]] {
+        guard FileManager.default.fileExists(atPath: database.path) else { throw LocalInventoryError.missingStore(database.path) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-readonly", "-json", database.path, sql]
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        guard process.terminationStatus == 0 else {
+            throw LocalInventoryError.sqliteFailure(String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if data.isEmpty { return [] }
+        return try JSONDecoder().decode([[String: MetadataValue]].self, from: data)
+    }
+
+    private func requireConfirmationIfNeeded(command: MetadataCommand, options: MetadataOptions) throws {
+        let sensitive: [MetadataCommand: String] = [
+            .healthSummary: "icloud-cli health summary",
+            .mailRecent: "icloud-cli mail recent",
+            .safariCloudTabsList: "icloud-cli safari cloud-tabs list",
+        ]
+        if let commandName = sensitive[command], !options.confirmSensitive {
+            throw LocalInventoryError.sensitiveConfirmationRequired(commandName)
+        }
+    }
+
+    private func whereClause(for command: MetadataCommand, options: MetadataOptions) -> String {
+        var filters: [String] = []
+        switch command {
+        case .calendarEvents:
+            if let calendar = options.calendar { filters.append("calendar = '\(sqlEscape(calendar))'") }
+            if let since = options.since { filters.append("startsAt >= '\(sqlEscape(since))'") }
+            if let until = options.until { filters.append("startsAt <= '\(sqlEscape(until))'") }
+        case .mailMailboxes:
+            if let account = options.account { filters.append("account = '\(sqlEscape(account))'") }
+        case .mailRecent:
+            if let account = options.account { filters.append("account = '\(sqlEscape(account))'") }
+            if let mailbox = options.mailbox { filters.append("mailbox = '\(sqlEscape(mailbox))'") }
+        case .booksList:
+            if let collection = options.collection { filters.append("collection = '\(sqlEscape(collection))'") }
+        case .voiceMemosList, .freeformList:
+            if let folder = options.folder { filters.append("folder = '\(sqlEscape(folder))'") }
+            if let since = options.since { filters.append("modifiedAt >= '\(sqlEscape(since))'") }
+            if let until = options.until { filters.append("modifiedAt <= '\(sqlEscape(until))'") }
+        case .homeRooms, .homeAccessories, .homeScenes:
+            if let home = options.home { filters.append("home = '\(sqlEscape(home))'") }
+            if command == .homeAccessories, let room = options.room { filters.append("room = '\(sqlEscape(room))'") }
+        case .musicTracks:
+            if let playlist = options.playlist { filters.append("playlist = '\(sqlEscape(playlist))'") }
+            if options.downloadedOnly { filters.append("cloudStatus = 'downloaded'") }
+            if options.cloudOnly { filters.append("cloudStatus = 'cloud-only'") }
+        case .notesFolders:
+            if let account = options.account { filters.append("account = '\(sqlEscape(account))'") }
+        case .remindersFlagged:
+            filters.append("isFlagged = 1")
+            filters.append("isCompleted = 0")
+        case .remindersToday:
+            filters.append("dueAt <= date('now', '+1 day')")
+            filters.append("isCompleted = 0")
+        case .remindersScheduled:
+            if let since = options.since { filters.append("dueAt >= '\(sqlEscape(since))'") }
+            if let until = options.until { filters.append("dueAt <= '\(sqlEscape(until))'") }
+        case .remindersAssigned:
+            filters.append("assignedToMe = 1")
+            filters.append("isCompleted = 0")
+        case .safariCloudTabsList:
+            if let device = options.device { filters.append("deviceName = '\(sqlEscape(device))'") }
+        case .safariExtensionsList:
+            if let profile = options.profile { filters.append("profile = '\(sqlEscape(profile))'") }
+        default:
+            break
+        }
+        return filters.isEmpty ? "" : " WHERE " + filters.joined(separator: " AND ")
+    }
+
+    private func orderClause(for command: MetadataCommand) -> String {
+        switch command {
+        case .calendarEvents: return " ORDER BY startsAt ASC"
+        case .mailRecent: return " ORDER BY sentAt DESC"
+        case .freeformList, .voiceMemosList: return " ORDER BY modifiedAt DESC"
+        case .safariCloudTabsList: return " ORDER BY deviceName ASC, lastSyncedAt DESC"
+        default: return ""
+        }
+    }
+
+    private func redact(row: MetadataRow, command: MetadataCommand, options: MetadataOptions) -> MetadataRow {
+        var fields = row.fields
+        if command == .calendarEvents {
+            if !options.includeAttendees { fields.removeValue(forKey: "attendees") }
+            if !options.includeNotes { fields.removeValue(forKey: "notes") }
+        }
+        if command == .safariCloudTabsList {
+            if !options.includeURLs {
+                fields.removeValue(forKey: "url")
+            } else if !options.raw, let rawURL = fields["url"]?.stringValue {
+                fields["url"] = .string(redactURL(rawURL))
+            }
+        }
+        if command == .weatherFavorites, !options.includeCoordinates {
+            fields.removeValue(forKey: "latitude")
+            fields.removeValue(forKey: "longitude")
+        }
+        if command == .findMyDevices || command == .findMyPeople, !options.includeCoordinates {
+            fields.removeValue(forKey: "latitude")
+            fields.removeValue(forKey: "longitude")
+        }
+        if command == .remindersFlagged || command == .remindersToday || command == .remindersScheduled || command == .remindersAssigned {
+            if !options.includeNotes { fields.removeValue(forKey: "notes") }
+        }
+        if command == .booksList, !options.includeHighlights {
+            fields.removeValue(forKey: "highlightCount")
+        }
+        return MetadataRow(kind: row.kind, fields: fields)
+    }
+}
+
+public struct AccountServiceState: Codable, Equatable, Sendable {
+    public let name: String
+    public let enabled: Bool?
+}
+
+public struct AccountStatus: Codable, Equatable, Sendable {
+    public let signedIn: Bool
+    public let appleID: String?
+    public let accountType: String?
+    public let services: [AccountServiceState]
+    public let twoFactorEnabled: Bool?
+    public let advancedDataProtectionEnabled: Bool?
+}
+
+public struct AccountStatusReader: Sendable {
+    public let cacheFile: URL
+
+    public init(cacheFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/MobileMeAccounts.plist")) {
+        self.cacheFile = cacheFile
+    }
+
+    public func readStatus() throws -> AccountStatus {
+        guard let plist = NSDictionary(contentsOf: cacheFile) else { throw LocalInventoryError.missingStore(cacheFile.path) }
+        let appleID = stringValue(plist["AccountID"] ?? plist["DSIDAccountEmail"] ?? plist["appleID"] ?? plist["email"])
+        let type = stringValue(plist["AccountType"] ?? plist["accountType"])
+        return AccountStatus(
+            signedIn: appleID != nil,
+            appleID: appleID,
+            accountType: type,
+            services: serviceStates(from: plist),
+            twoFactorEnabled: boolValue(plist["twoFactorEnabled"] ?? plist["2FAEnabled"]),
+            advancedDataProtectionEnabled: boolValue(plist["advancedDataProtectionEnabled"] ?? plist["ADPEnabled"])
+        )
+    }
+
+    private func serviceStates(from plist: NSDictionary) -> [AccountServiceState] {
+        if let services = plist["Services"] as? [NSDictionary] {
+            return services.compactMap { service in
+                guard let name = stringValue(service["Name"] ?? service["name"] ?? service["serviceName"]) else { return nil }
+                return AccountServiceState(name: name, enabled: boolValue(service["Enabled"] ?? service["enabled"]))
+            }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
+        let names = ["Drive", "Photos", "Mail", "Keychain", "Find My", "iCloud Backup", "Calendar", "Contacts", "Reminders", "Notes", "Safari", "News", "Stocks", "Home", "Health", "Wallet"]
+        return names.map { name in
+            let key = name.replacingOccurrences(of: " ", with: "")
+            return AccountServiceState(name: name, enabled: boolValue(plist[key] ?? plist["\(key)Enabled"]))
+        }
+    }
+}
+
+public struct FamilyMember: Codable, Equatable, Sendable {
+    public let displayName: String
+    public let role: String?
+    public let email: String?
+    public let purchaseSharing: Bool?
+}
+
+public struct SharedSubscription: Codable, Equatable, Sendable {
+    public let name: String
+    public let tier: String?
+}
+
+public struct FamilyStatus: Codable, Equatable, Sendable {
+    public let configured: Bool
+    public let organizer: String?
+    public let members: [FamilyMember]
+    public let subscriptions: [SharedSubscription]
+}
+
+public struct FamilyStatusReader: Sendable {
+    public let cacheFile: URL
+
+    public init(cacheFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/MobileMeAccounts.plist")) {
+        self.cacheFile = cacheFile
+    }
+
+    public func readStatus() throws -> FamilyStatus {
+        guard let plist = NSDictionary(contentsOf: cacheFile) else { throw LocalInventoryError.missingStore(cacheFile.path) }
+        let family = plist["Family"] as? NSDictionary
+        let members = (family?["members"] as? [NSDictionary] ?? plist["FamilyMembers"] as? [NSDictionary] ?? []).compactMap { member -> FamilyMember? in
+            guard let displayName = stringValue(member["displayName"] ?? member["name"]) else { return nil }
+            return FamilyMember(displayName: displayName, role: stringValue(member["role"]), email: stringValue(member["email"] ?? member["appleID"]), purchaseSharing: boolValue(member["purchaseSharing"]))
+        }
+        let subscriptions = (family?["subscriptions"] as? [NSDictionary] ?? plist["SharedSubscriptions"] as? [NSDictionary] ?? []).compactMap { subscription -> SharedSubscription? in
+            guard let name = stringValue(subscription["name"] ?? subscription["service"]) else { return nil }
+            return SharedSubscription(name: name, tier: stringValue(subscription["tier"]))
+        }
+        return FamilyStatus(
+            configured: boolValue(family?["configured"] ?? plist["FamilyConfigured"]) ?? !members.isEmpty,
+            organizer: stringValue(family?["organizer"] ?? plist["FamilyOrganizer"]),
+            members: members,
+            subscriptions: subscriptions
+        )
+    }
+}
+
+public struct BackupDeviceStatus: Codable, Equatable, Sendable {
+    public let deviceName: String
+    public let model: String?
+    public let backupEnabled: Bool?
+    public let lastBackupAt: String?
+    public let backupSizeBytes: Int?
+    public let blocker: String?
+}
+
+public struct BackupStatusReader: Sendable {
+    public let cacheFile: URL
+
+    public init(cacheFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/MobileMeAccounts.plist")) {
+        self.cacheFile = cacheFile
+    }
+
+    public func readStatus() throws -> [BackupDeviceStatus] {
+        guard let plist = NSDictionary(contentsOf: cacheFile) else { throw LocalInventoryError.missingStore(cacheFile.path) }
+        let backups = plist["Backups"] as? [NSDictionary] ?? plist["BackupDevices"] as? [NSDictionary] ?? []
+        return backups.compactMap { backup in
+            guard let name = stringValue(backup["deviceName"] ?? backup["name"]) else { return nil }
+            return BackupDeviceStatus(
+                deviceName: name,
+                model: stringValue(backup["model"]),
+                backupEnabled: boolValue(backup["backupEnabled"] ?? backup["enabled"]),
+                lastBackupAt: stringValue(backup["lastBackupAt"] ?? backup["lastSuccessfulBackupAt"]),
+                backupSizeBytes: intValue(backup["backupSizeBytes"] ?? backup["sizeBytes"]),
+                blocker: stringValue(backup["blocker"] ?? backup["nextBackupBlocker"])
+            )
+        }
+    }
+}
+
+public struct PermissionProbe: Codable, Equatable, Sendable {
+    public let command: String
+    public let paths: [String]
+    public let status: String
+    public let hint: String
+}
+
+public struct PermissionsDoctor: Sendable {
+    public init() {}
+
+    public func diagnose() -> [PermissionProbe] {
+        probeMatrix().map { item in
+            let redacted = item.paths.map(redactHomePath)
+            let missing = item.paths.filter { !FileManager.default.fileExists(atPath: $0) }
+            let unreadable = item.paths.filter { FileManager.default.fileExists(atPath: $0) && !FileManager.default.isReadableFile(atPath: $0) }
+            let status: String
+            if item.needsConfirmation {
+                status = "needs-confirm-sensitive"
+            } else if !unreadable.isEmpty {
+                status = "missing-fda"
+            } else if missing.count == item.paths.count {
+                status = "path-not-found"
+            } else {
+                status = "ok"
+            }
+            return PermissionProbe(command: item.command, paths: redacted, status: status, hint: hint(for: status))
+        }
+    }
+
+    private func probeMatrix() -> [(command: String, paths: [String], needsConfirmation: Bool)] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            ("safari tabs", [home.appendingPathComponent("Library/Safari").path], false),
+            ("safari history", [home.appendingPathComponent("Library/Safari/History.db").path], true),
+            ("messages recent", [home.appendingPathComponent("Library/Messages/chat.db").path], true),
+            ("health summary", [home.appendingPathComponent("Library/Health/healthdb_secure.sqlite").path], true),
+            ("mail recent", [home.appendingPathComponent("Library/Mail").path], true),
+            ("notes list", [home.appendingPathComponent("Library/Group Containers/group.com.apple.notes/NoteStore.sqlite").path], false),
+            ("drive list", [home.appendingPathComponent("Library/Mobile Documents").path], false),
+            ("photos list", [home.appendingPathComponent("Pictures/Photos Library.photoslibrary").path], false),
+        ]
+    }
+
+    private func hint(for status: String) -> String {
+        switch status {
+        case "missing-fda": return "Grant Full Disk Access to the calling terminal or agent process."
+        case "path-not-found": return "The local cache path has not been created or the service is not enabled on this Mac."
+        case "needs-confirm-sensitive": return "The command intentionally requires --confirm-sensitive before reading payload metadata."
+        default: return "Readable local source path."
+        }
+    }
+}
+
+public struct SnapshotEntry: Codable, Equatable, Sendable {
+    public let command: String
+    public let ok: Bool
+    public let summary: String
+}
+
+public struct SnapshotReport: Codable, Equatable, Sendable {
+    public let generatedAt: String
+    public let redaction: String
+    public let entries: [SnapshotEntry]
+}
+
+public struct SnapshotBuilder: Sendable {
+    public init() {}
+
+    public func build(options: MetadataOptions) -> SnapshotReport {
+        let commands = options.include.isEmpty ? ["storage-status", "devices-list", "focus-status", "drive-list", "cache-status"] : options.include
+        let entries = commands.map { command -> SnapshotEntry in
+            do {
+                return try entry(for: command)
+            } catch {
+                return SnapshotEntry(command: command, ok: false, summary: error.localizedDescription)
+            }
+        }
+        return SnapshotReport(generatedAt: ISO8601DateFormatter().string(from: Date()), redaction: options.redaction.rawValue, entries: entries)
+    }
+
+    private func entry(for command: String) throws -> SnapshotEntry {
+        switch command {
+        case "storage-status":
+            let status = try ICloudStorageStatusReader().readStatus()
+            return SnapshotEntry(command: command, ok: true, summary: "\(status.usedBytes)/\(status.totalBytes) bytes used")
+        case "devices-list":
+            let devices = try ICloudDevicesReader().listDevices()
+            return SnapshotEntry(command: command, ok: true, summary: "\(devices.count) devices")
+        case "focus-status":
+            let status = try FocusStatusReader().readStatus()
+            return SnapshotEntry(command: command, ok: true, summary: status.activeFocus ?? "none")
+        case "drive-list":
+            let files = try ICloudDriveInventoryReader().listFiles(depth: 1)
+            return SnapshotEntry(command: command, ok: true, summary: "\(files.count) files")
+        case "cache-status":
+            let status = try CacheWatchStore().status()
+            return SnapshotEntry(command: command, ok: true, summary: "\(status.count) cache files")
+        default:
+            throw CacheWatchError.missingCommand(command)
+        }
+    }
+}
+
+public struct FinderTag: Codable, Equatable, Sendable {
+    public let name: String
+    public let color: String?
+    public let favorite: Bool
+    public let displayOrder: Int
+}
+
+public struct TaggedDriveItem: Codable, Equatable, Sendable {
+    public let path: String
+    public let modifiedAt: Date?
+    public let iCloudStatus: ICloudFileStatus
+}
+
+public struct FinderTagsReader: Sendable {
+    public let preferencesFile: URL
+    public let driveRoot: URL
+
+    public init(
+        preferencesFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/SyncedPreferences/com.apple.finder.plist"),
+        driveRoot: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents")
+    ) {
+        self.preferencesFile = preferencesFile
+        self.driveRoot = driveRoot
+    }
+
+    public func listTags() throws -> [FinderTag] {
+        guard let plist = NSDictionary(contentsOf: preferencesFile) else { throw LocalInventoryError.missingStore(preferencesFile.path) }
+        let favorites = plist["FavoriteTagNames"] as? [String] ?? []
+        let colors = plist["TagColorDictionary"] as? [String: String] ?? [:]
+        let names = Array(Set(favorites + Array(colors.keys))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return names.enumerated().map { index, name in
+            FinderTag(name: name, color: colors[name], favorite: favorites.contains(name), displayOrder: index)
+        }
+    }
+
+    public func items(tag: String, path: String?, limit: Int) throws -> [TaggedDriveItem] {
+        let files = try ICloudDriveInventoryReader(rootDirectory: driveRoot).listFiles(path: path, depth: Int.max)
+        return files
+            .filter { $0.name.localizedCaseInsensitiveContains(tag) || $0.path.localizedCaseInsensitiveContains(".\(tag).") }
+            .prefix(max(1, limit))
+            .map { TaggedDriveItem(path: $0.path, modifiedAt: $0.modifiedAt, iCloudStatus: $0.iCloudStatus) }
+    }
+}
+
+private func bounded(_ value: Int, defaultValue: Int, max: Int) -> Int {
+    guard value > 0 else { return defaultValue }
+    return Swift.min(value, max)
+}
+
+private func sqlEscape(_ value: String) -> String {
+    value.replacingOccurrences(of: "'", with: "''")
+}
+
+private func redactURL(_ raw: String) -> String {
+    guard let components = URLComponents(string: raw), let scheme = components.scheme, let host = components.host else {
+        return raw
+    }
+    return "\(scheme)://\(host)"
+}
+
+private func stringValue(_ value: Any?) -> String? {
+    if let string = value as? String, !string.isEmpty { return string }
+    return nil
+}
+
+private func boolValue(_ value: Any?) -> Bool? {
+    if let bool = value as? Bool { return bool }
+    if let number = value as? NSNumber { return number.boolValue }
+    if let string = value as? String { return ["true", "yes", "1"].contains(string.lowercased()) }
+    return nil
+}
+
+private func intValue(_ value: Any?) -> Int? {
+    if let number = value as? NSNumber { return number.intValue }
+    if let string = value as? String { return Int(string) }
+    return nil
+}
+
+private func redactHomePath(_ path: String) -> String {
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    if path == home { return "~" }
+    if path.hasPrefix(home + "/") { return "~/" + String(path.dropFirst(home.count + 1)) }
+    return path
+}

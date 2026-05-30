@@ -7,19 +7,24 @@ icloud-cli safari tabs
 icloud-cli safari tabs --format text
 icloud-cli safari tabs --source current-session
 icloud-cli safari cloud-tabs probe
+icloud-cli safari cloud-tabs list --confirm-sensitive
 icloud-cli safari bookmarks
 icloud-cli safari reading-list
 icloud-cli safari frequently-visited --limit 10
 icloud-cli drive list --depth 2
+icloud-cli drive status
 icloud-cli drive containers --sort-by size
+icloud-cli account status
+icloud-cli snapshot
+icloud-cli permissions doctor
 icloud-cli shortcuts list --name Daily
 ```
 
-The implementation reads local Safari session and metadata property lists from `~/Library/Safari`, iCloud Drive metadata from `~/Library/Mobile Documents`, and Shortcuts metadata from `~/Library/Shortcuts`. Commands stay local and read-only while we map the broader iCloud/Safari sync surface. Reading live browser state may require running the terminal with Full Disk Access on macOS.
+The implementation reads local Safari session and metadata property lists from `~/Library/Safari`, iCloud Drive metadata from `~/Library/Mobile Documents`, Shortcuts metadata from `~/Library/Shortcuts`, and best-effort local Apple cache stores for account, backup, family, Calendar, Mail, Find My, Photos sharing, Health aggregates, Home, Books, Music, Weather, Stocks, Freeform, Voice Memos, Finder tags, Notes, and Reminders. Commands stay local and read-only while we map the broader iCloud/Safari sync surface. Reading live browser state or private Apple caches may require running the terminal with Full Disk Access on macOS.
 
 If Safari session files are unreadable, the command exits with an error naming the file paths it tried. If the files are readable but empty, the error says no tabs were found instead of treating it as a permissions problem.
 
-Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device tab store is present and readable before enabling any cloud-tab parsing. See [docs/cloudtabs.md](docs/cloudtabs.md) for the investigation notes, [docs/privacy.md](docs/privacy.md) for the privacy and permissions model, and [docs/openclaw-skill-contract.md](docs/openclaw-skill-contract.md) for the OpenClaw integration contract.
+Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device tab store is present and readable before using `icloud-cli safari cloud-tabs list --confirm-sensitive`. Use `icloud-cli permissions doctor` when a command reports missing or unreadable local stores; it probes source paths without reading payload content and gives the Full Disk Access hint per command. See [docs/cloudtabs.md](docs/cloudtabs.md) for the investigation notes, [docs/privacy.md](docs/privacy.md) for the privacy and permissions model, and [docs/openclaw-skill-contract.md](docs/openclaw-skill-contract.md) for the OpenClaw integration contract.
 
 ## Build
 
