@@ -1,34 +1,42 @@
 # iCloud CLI Vision
 
-Version: 0.1
+Version: 0.2
 
-iCloud CLI is a local-first Swift command-line tool for inspecting selected iCloud-adjacent state, starting with Safari tab inventory and expanding only where privacy and reliability can stay clear.
+iCloud CLI is a macOS command-line toolkit for reading local iCloud-backed Apple state. It is local, read-only, and operator-facing: it should help a user understand Safari, iCloud Drive, Shortcuts, account status, and nearby Apple metadata without turning private device data into a cloud service.
 
-The product should help the operator understand personal Apple ecosystem state without sending private data elsewhere.
+The product started with Safari tabs and CloudTabs investigation, but the useful shape is broader: safe local inventory commands, privacy-aware permission diagnostics, and redacted snapshots that other local automation such as OpenClaw can consume.
 
 ## Who It Serves
 
-- A privacy-conscious operator who wants local inspection tools.
-- Agents that need explicit command contracts and fixture-backed tests.
-- Future users who want small, auditable iCloud utilities instead of a broad opaque app.
+- A privacy-conscious Mac operator who wants scriptable visibility into local Apple ecosystem state.
+- Agents that need stable JSON contracts, fixture-backed parsers, and explicit privacy rules before using personal-device data.
+- Local automation systems that need aggregate or redacted state without receiving raw browsing, account, or file payloads by default.
+
+## Current Product Boundary
+
+- Supported sources: local Safari session/bookmark/profile/frequently-visited data, CloudTabs probes and confirmed sensitive listing, iCloud Drive metadata, Shortcuts metadata, account and system status caches, Wallet/Handoff fixtures, and broad local inventory snapshots.
+- Permission model: commands name unreadable paths and `permissions doctor` probes source availability without reading payload content.
+- Distribution path: SwiftPM source checkout and `make release` producing `dist/icloud-cli` plus checksum.
+- Integration path: OpenClaw skill contract and redacted command output suitable for local node reporting.
 
 ## Product Principles
 
-- Local-only by default.
-- Redact sensitive output unless the command explicitly promises otherwise.
-- Tests should be written before new behavior.
-- SwiftPM CLI ergonomics matter: help, errors, and release artifacts are product surfaces.
-- Governance and roadmap should stay issue-backed.
+- Local-only and read-only unless a future issue explicitly changes that boundary.
+- Sensitive output requires explicit confirmation or redaction; broad snapshots should prefer counts, statuses, and paths over raw content.
+- Permission errors should be actionable and path-specific, not vague.
+- Tests and privacy fixtures are part of the product contract for every parser.
+- CLI ergonomics matter: stable JSON, useful text output, clear help, deterministic release artifacts, and no unnecessary dependencies.
 
 ## Near-Term Direction
 
-- Strengthen aggregate, redacted inventory commands.
-- Keep Safari tabs and CloudTabs probing narrow and well-tested.
-- Preserve release packaging with checksums.
-- Maintain governance audits without extra runtime dependencies.
+- Strengthen redacted aggregate inventory commands that summarize Apple state safely.
+- Keep CloudTabs work narrow: probe first, require confirmation for sensitive listing, and document local database constraints.
+- Expand permissions diagnostics for the stores that commonly require Full Disk Access.
+- Preserve release packaging, coverage indicators, privacy checks, and governance audits as fast local gates.
 
 ## Non-Goals
 
-- Do not become a cloud sync service.
-- Do not collect or transmit private account data.
-- Do not add broad iCloud surfaces without clear local data contracts and privacy docs.
+- Do not become a sync service, daemon, or remote data collector.
+- Do not upload, persist, or share private Apple account data.
+- Do not add broad Apple cache readers without explicit privacy docs, fixtures, and command contracts.
+- Do not make OpenClaw or agent integrations depend on raw browsing or account payloads.
