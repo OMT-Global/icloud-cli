@@ -110,23 +110,28 @@ public struct CommandRunner: Sendable {
                 output(try render(lists, format: options.format))
                 return 0
             case .safariBookmarks(let options):
-                let bookmarks = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readBookmarks()
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let bookmarks = try SafariBookmarksReader(safariDirectory: directory).readBookmarks()
                 output(try render(bookmarks, format: options.format))
                 return 0
             case .safariFrequentlyVisited(let options):
-                let sites = try SafariFrequentlyVisitedReader(safariDirectory: options.safariDirectory).readSites(limit: options.limit)
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let sites = try SafariFrequentlyVisitedReader(safariDirectory: directory).readSites(limit: options.limit)
                 output(try render(sites, format: options.format))
                 return 0
             case .safariHistory(let options):
-                let history = try LocalSQLiteInventoryReader(database: options.historyDatabase).safariHistory(confirmSensitive: options.confirmSensitive, since: options.since, until: options.until, limit: options.limit, redactURLs: options.redactURLs)
+                let database = safariHistoryDatabase(for: options)
+                let history = try LocalSQLiteInventoryReader(database: database).safariHistory(confirmSensitive: options.confirmSensitive, since: options.since, until: options.until, limit: options.limit, redactURLs: options.redactURLs)
                 output(try render(history, format: options.format))
                 return 0
             case .safariReadingList(let options):
-                let items = try SafariBookmarksReader(safariDirectory: options.safariDirectory).readReadingList()
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let items = try SafariBookmarksReader(safariDirectory: directory).readReadingList()
                 output(try render(items, format: options.format))
                 return 0
             case .safariTabs(let options):
-                let tabs = try SafariTabsReader(safariDirectory: options.safariDirectory).readTabs(source: options.source)
+                let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
+                let tabs = try SafariTabsReader(safariDirectory: directory).readTabs(source: options.source)
                 output(try render(tabs, format: options.format))
                 return 0
             case .shortcutsList(let options):
@@ -155,6 +160,19 @@ public struct CommandRunner: Sendable {
             errorOutput(error.localizedDescription)
             return 1
         }
+    }
+
+    private func safariHistoryDatabase(for options: SafariHistoryOptions) -> URL {
+        guard let profile = options.profile?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !profile.isEmpty,
+            profile.lowercased() != "all"
+        else {
+            return options.historyDatabase
+        }
+        let baseDirectory = options.historyDatabase.deletingLastPathComponent()
+        return SafariProfileDirectoryResolver()
+            .directory(baseDirectory: baseDirectory, profile: profile)
+            .appendingPathComponent(options.historyDatabase.lastPathComponent)
     }
 
     private func runMetadata(command: MetadataCommand, options: MetadataOptions) throws -> String {
