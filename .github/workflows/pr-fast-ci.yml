@@ -11,7 +11,11 @@ on:
 jobs:
   ci-gate:
     name: CI Gate
-    runs-on: macos-15
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+      - xcode
     steps:
       - name: Checkout
         uses: actions/checkout@v4
