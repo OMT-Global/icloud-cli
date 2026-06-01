@@ -11,13 +11,19 @@ on:
 jobs:
   ci-gate:
     name: CI Gate
-    runs-on: macos-15
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+      - xcode
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Verify Xcode
+        run: xcodebuild -version
 
       - name: Fast checks
         run: bash scripts/ci/run-fast-checks.sh
