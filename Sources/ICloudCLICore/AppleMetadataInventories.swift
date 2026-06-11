@@ -79,6 +79,9 @@ public struct LocalMetadataStoreReader: Sendable {
 
     public func rows(for command: MetadataCommand, options: MetadataOptions = MetadataOptions()) throws -> [MetadataRow] {
         try requireConfirmationIfNeeded(command: command, options: options)
+        if command == .safariCloudTabsList {
+            return try cloudTabRows(options: options)
+        }
         guard let tableName = command.tableName else {
             throw LocalInventoryError.sqliteFailure("No metadata table configured for \(command.displayName)")
         }
@@ -86,6 +89,33 @@ public struct LocalMetadataStoreReader: Sendable {
             .map { MetadataRow(kind: command.displayName, fields: $0) }
         rows = rows.map { redact(row: $0, command: command, options: options) }
         return rows
+    }
+
+    private func cloudTabRows(options: MetadataOptions) throws -> [MetadataRow] {
+        var filters: [String] = []
+        if let device = options.device {
+            filters.append("d.device_name = '\(sqlEscape(device))'")
+        }
+        let whereSQL = filters.isEmpty ? "" : " WHERE " + filters.joined(separator: " AND ")
+        let sql = """
+            SELECT
+                d.device_name AS deviceName,
+                t.title AS title,
+                t.url AS url,
+                d.last_modified AS lastSyncedAt,
+                t.position AS position,
+                t.is_pinned AS isPinned,
+                t.is_showing_reader AS isShowingReader,
+                t.scene_id AS sceneID
+            FROM cloud_tabs t
+            LEFT JOIN cloud_tab_devices d ON d.device_uuid = t.device_uuid
+            \(whereSQL)
+            ORDER BY d.device_name ASC, t.position ASC
+            LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+            """
+        return try query(sql)
+            .map { MetadataRow(kind: MetadataCommand.safariCloudTabsList.displayName, fields: $0) }
+            .map { redact(row: $0, command: .safariCloudTabsList, options: options) }
     }
 
     public static func defaultStore(for command: MetadataCommand) -> URL {
@@ -144,7 +174,7 @@ public struct LocalMetadataStoreReader: Sendable {
         let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         guard process.terminationStatus == 0 else {
-            throw LocalInventoryError.sqliteFailure(String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            throw sqliteError(from: errorData, store: database.path)
         }
         if data.isEmpty { return [] }
         return try JSONDecoder().decode([[String: MetadataValue]].self, from: data)

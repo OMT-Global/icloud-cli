@@ -4,6 +4,7 @@ public enum LocalInventoryError: Error, LocalizedError, Equatable {
     case missingRoot(String)
     case missingStore(String)
     case sensitiveConfirmationRequired(String)
+    case unsupportedSchema(store: String, detail: String)
     case sqliteFailure(String)
 
     public var errorDescription: String? {
@@ -12,6 +13,8 @@ public enum LocalInventoryError: Error, LocalizedError, Equatable {
         case .missingStore(let path): return "Inventory store not available: \(path)"
         case .sensitiveConfirmationRequired(let command):
             return "\(command) reads high-sensitivity local data; rerun with --confirm-sensitive"
+        case .unsupportedSchema(let store, let detail):
+            return "Inventory store has an unsupported schema: \(store) (\(detail))"
         case .sqliteFailure(let message): return "SQLite query failed: \(message)"
         }
     }
@@ -344,11 +347,23 @@ public struct LocalSQLiteInventoryReader: Sendable {
         let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         guard process.terminationStatus == 0 else {
-            throw LocalInventoryError.sqliteFailure(String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            throw sqliteError(from: errorData, store: database.path)
         }
         if data.isEmpty { return [] }
         return try JSONDecoder().decode([T].self, from: data)
     }
+}
+
+func sqliteError(from errorData: Data, store: String) -> LocalInventoryError {
+    let message = String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    let lowercased = message.lowercased()
+    if lowercased.contains("no such table") || lowercased.contains("no such column") {
+        return .unsupportedSchema(store: store, detail: message)
+    }
+    if lowercased.contains("file is not a database") || lowercased.contains("file is not in a database") {
+        return .unsupportedSchema(store: store, detail: "not a SQLite database")
+    }
+    return .sqliteFailure(message)
 }
 
 private struct RawContactRow: Decodable {
