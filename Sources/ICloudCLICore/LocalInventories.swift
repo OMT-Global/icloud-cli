@@ -401,6 +401,37 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 }
 
+public struct AddressBookStoreResolver: Sendable {
+    public let defaultDatabase: URL
+
+    public init(defaultDatabase: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/AddressBook/AddressBook-v22.abcddb")) {
+        self.defaultDatabase = defaultDatabase
+    }
+
+    public func database() -> URL {
+        if FileManager.default.fileExists(atPath: defaultDatabase.path) {
+            return defaultDatabase
+        }
+        let sourcesDirectory = defaultDatabase
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        guard let sourceDirectories = try? FileManager.default.contentsOfDirectory(
+            at: sourcesDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return defaultDatabase
+        }
+        let candidates = sourceDirectories.compactMap { source -> URL? in
+            let values = try? source.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else { return nil }
+            let database = source.appendingPathComponent(defaultDatabase.lastPathComponent)
+            return FileManager.default.fileExists(atPath: database.path) ? database : nil
+        }
+        return candidates.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }.first ?? defaultDatabase
+    }
+}
+
 private struct SQLiteTableRow: Decodable {
     let name: String
 }

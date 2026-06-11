@@ -100,6 +100,21 @@ import Testing
     #expect(recent.first?.body == nil)
 }
 
+@Test func resolvesAddressBookDatabaseInsideSourcesDirectory() throws {
+    let root = try temporaryDirectory(named: "addressbook")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let defaultDatabase = root.appendingPathComponent("AddressBook-v22.abcddb")
+    let sourceDatabase = root
+        .appendingPathComponent("Sources/source-a", isDirectory: true)
+        .appendingPathComponent("AddressBook-v22.abcddb")
+    try FileManager.default.createDirectory(at: sourceDatabase.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: sourceDatabase)
+
+    let resolved = AddressBookStoreResolver(defaultDatabase: defaultDatabase).database()
+
+    #expect(resolved.standardizedFileURL.path == sourceDatabase.standardizedFileURL.path)
+}
+
 @Test func cacheStoreWritesReadsAndReportsStatus() throws {
     let root = try temporaryDirectory(named: "cache")
     defer { try? FileManager.default.removeItem(at: root) }
