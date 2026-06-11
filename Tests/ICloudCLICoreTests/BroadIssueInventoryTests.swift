@@ -90,6 +90,53 @@ import Testing
     #expect(health.first?.int("recordCount") == 42)
 }
 
+@Test func readsAppleMailEnvelopeIndexShape() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "mail-envelope")
+    let database = root.appendingPathComponent("Envelope Index")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE mailboxes (ROWID INTEGER PRIMARY KEY, url TEXT, name TEXT, account_url TEXT, account_identifier TEXT, total_count INTEGER, messages_count INTEGER, unread_count INTEGER);
+    CREATE TABLE addresses (ROWID INTEGER PRIMARY KEY, address TEXT, comment TEXT);
+    CREATE TABLE subjects (ROWID INTEGER PRIMARY KEY, subject TEXT);
+    CREATE TABLE messages (ROWID INTEGER PRIMARY KEY, sender INTEGER, subject INTEGER, mailbox INTEGER, date_sent INTEGER, date_received INTEGER, date_last_viewed INTEGER, read INTEGER);
+    INSERT INTO mailboxes VALUES (1, 'imap://operator@example.com/INBOX', 'Inbox', 'imap://operator@example.com', 'iCloud Mail', 2, 2, 1);
+    INSERT INTO addresses VALUES (1, 'sender@example.com', 'Sender');
+    INSERT INTO subjects VALUES (1, 'Hello');
+    INSERT INTO messages VALUES (1, 1, 1, 1, 1770000000, 1770000001, 1770000002, 0);
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+
+    let reader = LocalMetadataStoreReader(database: database)
+    let accounts = try reader.rows(for: .mailAccounts)
+    #expect(accounts.first?.string("displayName") == "iCloud Mail")
+    #expect(accounts.first?.string("type") == "IMAP")
+
+    let mailboxes = try reader.rows(for: .mailMailboxes, options: MetadataOptions(account: "iCloud Mail"))
+    #expect(mailboxes.first?.string("mailbox") == "Inbox")
+    #expect(mailboxes.first?.int("unreadCount") == 1)
+
+    let recent = try reader.rows(for: .mailRecent, options: MetadataOptions(mailbox: "Inbox", confirmSensitive: true))
+    #expect(recent.first?.string("sender") == "sender@example.com")
+    #expect(recent.first?.string("subject") == "Hello")
+}
+
+@Test func reportsUnsupportedMusicStoreWhenNotSQLite() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "music-nonsqlite")
+    let database = root.appendingPathComponent("Library.musicdb")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try "not sqlite".write(to: database, atomically: true, encoding: .utf8)
+
+    do {
+        _ = try LocalMetadataStoreReader(database: database).rows(for: .musicStatus)
+        Issue.record("Expected unsupported schema")
+    } catch LocalInventoryError.unsupportedSchema(let store, let detail) {
+        #expect(store == database.path)
+        #expect(detail.contains("Music library store is not a readable SQLite database"))
+    } catch {
+        Issue.record("Expected unsupported schema, got \(error)")
+    }
+}
+
 @Test func readsSyntheticAccountFamilyAndBackupPlists() throws {
     let plist = try syntheticAccountPlist()
     defer { try? FileManager.default.removeItem(at: plist.deletingLastPathComponent()) }
