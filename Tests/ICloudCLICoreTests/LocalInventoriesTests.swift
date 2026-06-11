@@ -119,6 +119,24 @@ import Testing
     #expect(withNotes.first?.note == "private note")
 }
 
+@Test func readsAppleNotesStoreSchema() throws {
+    let database = try appleNotesFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let notes = try reader.notes(folder: "Quick Notes", modifiedSince: "2026-01-01T00:00:00Z", includeBody: false)
+
+    #expect(notes.map(\.title) == ["Plan"])
+    #expect(notes.first?.folderName == "Quick Notes")
+    #expect(notes.first?.createdAt == "2026-01-01T00:00:00Z")
+    #expect(notes.first?.modifiedAt == "2026-01-02T00:00:00Z")
+    #expect(notes.first?.isPinned == true)
+    #expect(notes.first?.body == nil)
+
+    let withBody = try reader.notes(folder: nil, modifiedSince: nil, includeBody: true)
+    #expect(withBody.first?.body == "Sensitive body")
+}
+
 @Test func resolvesAddressBookDatabaseInsideSourcesDirectory() throws {
     let root = try temporaryDirectory(named: "addressbook")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -190,6 +208,30 @@ private func appleAddressBookFixtureDatabase() throws -> URL {
     INSERT INTO ZABCDRECORD VALUES (2, NULL, NULL, 'Example Org', 'org note');
     INSERT INTO ZABCDEMAILADDRESS VALUES (1, 'alice@example.com', 'work');
     INSERT INTO ZABCDPHONENUMBER VALUES (1, '+15550101', 'mobile');
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func appleNotesFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-notes")
+    let database = root.appendingPathComponent("NoteStore.sqlite")
+    let sql = """
+    CREATE TABLE ZICCLOUDSYNCINGOBJECT (
+        Z_PK INTEGER PRIMARY KEY,
+        ZTITLE1 TEXT,
+        ZTITLE2 TEXT,
+        ZFOLDER INTEGER,
+        ZCREATIONDATE1 REAL,
+        ZMODIFICATIONDATE1 REAL,
+        ZISPINNED INTEGER,
+        ZMARKEDFORDELETION INTEGER
+    );
+    CREATE TABLE ZICNOTEDATA (ZNOTE INTEGER, ZDATA BLOB);
+    INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (1, NULL, 'Quick Notes', NULL, NULL, NULL, NULL, 0);
+    INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (2, 'Plan', NULL, 1, 788918400, 789004800, 1, 0);
+    INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (3, 'Deleted', NULL, 1, 788918400, 789091200, 0, 1);
+    INSERT INTO ZICNOTEDATA VALUES (2, CAST('Sensitive body' AS BLOB));
     """
     try runSQLite(database: database, sql: sql)
     return database

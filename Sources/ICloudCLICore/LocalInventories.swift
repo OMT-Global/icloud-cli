@@ -246,12 +246,60 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func notes(folder: String?, modifiedSince: String?, includeBody: Bool) throws -> [NoteEntry] {
+        if try tableExists("notes") {
+            return try syntheticNotes(folder: folder, modifiedSince: modifiedSince, includeBody: includeBody)
+        }
+        if try tableExists("ZICCLOUDSYNCINGOBJECT") {
+            return try appleNotes(folder: folder, modifiedSince: modifiedSince, includeBody: includeBody)
+        }
+        throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "no such table: notes; missing notes or ZICCLOUDSYNCINGOBJECT tables")
+    }
+
+    private func syntheticNotes(folder: String?, modifiedSince: String?, includeBody: Bool) throws -> [NoteEntry] {
         let whereClause = andClause([
             folder.map { "folderName = '\(sqlEscape($0))'" },
             modifiedSince.map { "modifiedAt >= '\(sqlEscape($0))'" },
         ])
         let bodyColumn = includeBody ? "body" : "NULL AS body"
         return try query("SELECT title, folderName, createdAt, modifiedAt, isPinned, \(bodyColumn) FROM notes\(whereClause) ORDER BY modifiedAt DESC, title ASC;")
+    }
+
+    private func appleNotes(folder: String?, modifiedSince: String?, includeBody: Bool) throws -> [NoteEntry] {
+        let hasNoteData = try tableExists("ZICNOTEDATA")
+        let bodyJoin = hasNoteData ? "LEFT JOIN ZICNOTEDATA d ON d.ZNOTE = n.Z_PK" : ""
+        let bodyColumn = includeBody && hasNoteData ? "CAST(d.ZDATA AS TEXT)" : "NULL"
+        let folderTitleColumn = try columnExists("ZICCLOUDSYNCINGOBJECT", "ZTITLE2") ? "f.ZTITLE2" : "f.ZTITLE1"
+        let hasModifiedDate = try columnExists("ZICCLOUDSYNCINGOBJECT", "ZMODIFICATIONDATE1")
+        let modifiedExpression = hasModifiedDate ? appleDateExpression("n.ZMODIFICATIONDATE1") : "NULL"
+        let createdExpression = try columnExists("ZICCLOUDSYNCINGOBJECT", "ZCREATIONDATE1") ? appleDateExpression("n.ZCREATIONDATE1") : "NULL"
+        let pinnedColumn = try columnExists("ZICCLOUDSYNCINGOBJECT", "ZISPINNED") ? "COALESCE(n.ZISPINNED, 0)" : "0"
+        let orderClause = hasModifiedDate ? "ORDER BY n.ZMODIFICATIONDATE1 DESC, n.ZTITLE1 ASC" : "ORDER BY n.ZTITLE1 ASC"
+        var filters: [String?] = [
+            "n.ZTITLE1 IS NOT NULL",
+            folder.map { "\(folderTitleColumn) = '\(sqlEscape($0))'" },
+        ]
+        if try columnExists("ZICCLOUDSYNCINGOBJECT", "ZMARKEDFORDELETION") {
+            filters.append("(n.ZMARKEDFORDELETION IS NULL OR n.ZMARKEDFORDELETION = 0)")
+        }
+        if let modifiedSince {
+            filters.append("\(modifiedExpression) >= '\(sqlEscape(modifiedSince))'")
+        }
+        let whereClause = andClause(filters)
+
+        return try query("""
+            SELECT
+                n.ZTITLE1 AS title,
+                \(folderTitleColumn) AS folderName,
+                \(createdExpression) AS createdAt,
+                \(modifiedExpression) AS modifiedAt,
+                \(pinnedColumn) AS isPinned,
+                \(bodyColumn) AS body
+            FROM ZICCLOUDSYNCINGOBJECT n
+            LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON f.Z_PK = n.ZFOLDER
+            \(bodyJoin)
+            \(whereClause)
+            \(orderClause);
+            """)
     }
 
     public func reminderLists() throws -> [ReminderListSummary] {
@@ -618,6 +666,10 @@ private func andClause(_ filters: [String?]) -> String {
 private func bounded(_ value: Int, defaultValue: Int, max: Int) -> Int {
     guard value > 0 else { return defaultValue }
     return Swift.min(value, max)
+}
+
+private func appleDateExpression(_ column: String) -> String {
+    "CASE WHEN \(column) IS NULL THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%SZ', \(column) + 978307200, 'unixepoch') END"
 }
 
 private func sqlEscape(_ value: String) -> String {

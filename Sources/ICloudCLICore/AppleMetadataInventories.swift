@@ -82,6 +82,12 @@ public struct LocalMetadataStoreReader: Sendable {
         if command == .safariCloudTabsList {
             return try cloudTabRows(options: options)
         }
+        if command == .mailAccounts || command == .mailMailboxes || command == .mailRecent {
+            return try mailRows(for: command, options: options)
+        }
+        if command == .musicStatus || command == .musicPlaylists || command == .musicTracks {
+            try validateSQLiteStore(featureName: "Music library")
+        }
         guard let tableName = command.tableName else {
             throw LocalInventoryError.sqliteFailure("No metadata table configured for \(command.displayName)")
         }
@@ -116,6 +122,126 @@ public struct LocalMetadataStoreReader: Sendable {
         return try query(sql)
             .map { MetadataRow(kind: MetadataCommand.safariCloudTabsList.displayName, fields: $0) }
             .map { redact(row: $0, command: .safariCloudTabsList, options: options) }
+    }
+
+    private func mailRows(for command: MetadataCommand, options: MetadataOptions) throws -> [MetadataRow] {
+        if try tableExists(command.tableName ?? "") {
+            guard let tableName = command.tableName else { return [] }
+            return try query("SELECT * FROM \(tableName)\(whereClause(for: command, options: options))\(orderClause(for: command)) LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));")
+                .map { MetadataRow(kind: command.displayName, fields: $0) }
+        }
+        let hasAppleMailboxes = try tableExists("mailboxes")
+        let hasAppleMessages = try tableExists("messages")
+        guard hasAppleMailboxes || hasAppleMessages else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing mail metadata tables or Apple Mail Envelope Index tables")
+        }
+        switch command {
+        case .mailAccounts:
+            return try appleMailAccounts(options: options)
+        case .mailMailboxes:
+            return try appleMailMailboxes(options: options)
+        case .mailRecent:
+            return try appleMailRecent(options: options)
+        default:
+            return []
+        }
+    }
+
+    private func appleMailAccounts(options: MetadataOptions) throws -> [MetadataRow] {
+        guard try tableExists("mailboxes") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing Apple Mail mailboxes table")
+        }
+        let mailboxColumns = try columns(in: "mailboxes")
+        let displayName = coalesceExpression(
+            candidates: ["account_identifier", "account_url", "url", "name"],
+            columns: mailboxColumns,
+            alias: "displayName",
+            fallback: "'Local Mail'"
+        )
+        let accountLocator = coalesceRawExpression(candidates: ["account_url", "url"], columns: mailboxColumns, fallback: "''")
+        let sql = """
+            SELECT
+                \(displayName),
+                CASE
+                    WHEN \(accountLocator) LIKE '%icloud%' THEN 'iCloud'
+                    WHEN \(accountLocator) LIKE 'imap://%' THEN 'IMAP'
+                    WHEN \(accountLocator) LIKE 'pop://%' THEN 'POP'
+                    ELSE NULL
+                END AS type,
+                COUNT(*) AS mailboxCount
+            FROM mailboxes
+            GROUP BY displayName, type
+            ORDER BY displayName ASC
+            LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+            """
+        return try query(sql).map { MetadataRow(kind: MetadataCommand.mailAccounts.displayName, fields: $0) }
+    }
+
+    private func appleMailMailboxes(options: MetadataOptions) throws -> [MetadataRow] {
+        guard try tableExists("mailboxes") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing Apple Mail mailboxes table")
+        }
+        let mailboxColumns = try columns(in: "mailboxes")
+        let messageColumns = try tableExists("messages") ? columns(in: "messages") : []
+        let account = coalesceRawExpression(candidates: ["account_identifier", "account_url", "url"], columns: mailboxColumns, tableAlias: "m", fallback: "'Local Mail'")
+        let mailbox = coalesceRawExpression(candidates: ["name", "url"], columns: mailboxColumns, tableAlias: "m", fallback: "CAST(m.ROWID AS TEXT)")
+        let hasMessages = !messageColumns.isEmpty && messageColumns.contains("mailbox")
+        let total = coalesceRawExpression(candidates: ["total_count", "messages_count"], columns: mailboxColumns, tableAlias: "m", fallback: hasMessages ? "COUNT(msg.ROWID)" : "0")
+        let unread = coalesceRawExpression(candidates: ["unread_count"], columns: mailboxColumns, tableAlias: "m", fallback: hasMessages && messageColumns.contains("read") ? "SUM(CASE WHEN COALESCE(msg.read, 0) = 0 THEN 1 ELSE 0 END)" : "0")
+        let joinMessages = hasMessages ? "LEFT JOIN messages msg ON msg.mailbox = m.ROWID" : ""
+        let accountFilter = options.account.map { " AND \(account) = '\(sqlEscape($0))'" } ?? ""
+        let sql = """
+            SELECT
+                \(account) AS account,
+                \(mailbox) AS mailbox,
+                \(total) AS totalCount,
+                \(unread) AS unreadCount
+            FROM mailboxes m
+            \(joinMessages)
+            WHERE 1 = 1\(accountFilter)
+            GROUP BY m.ROWID
+            ORDER BY account ASC, mailbox ASC
+            LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+            """
+        return try query(sql).map { MetadataRow(kind: MetadataCommand.mailMailboxes.displayName, fields: $0) }
+    }
+
+    private func appleMailRecent(options: MetadataOptions) throws -> [MetadataRow] {
+        guard try tableExists("messages"), try tableExists("mailboxes") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing Apple Mail messages or mailboxes table")
+        }
+        let mailboxColumns = try columns(in: "mailboxes")
+        let messageColumns = try columns(in: "messages")
+        let account = coalesceRawExpression(candidates: ["account_identifier", "account_url", "url"], columns: mailboxColumns, tableAlias: "mb", fallback: "'Local Mail'")
+        let mailboxFallback = messageColumns.contains("mailbox") ? "CAST(msg.mailbox AS TEXT)" : "NULL"
+        let mailbox = coalesceRawExpression(candidates: ["name", "url"], columns: mailboxColumns, tableAlias: "mb", fallback: mailboxFallback)
+        let accountFilter = options.account.map { " AND \(account) = '\(sqlEscape($0))'" } ?? ""
+        let mailboxFilter = options.mailbox.map { " AND \(mailbox) = '\(sqlEscape($0))'" } ?? ""
+        let hasAddresses = try tableExists("addresses") && messageColumns.contains("sender")
+        let addressColumns = hasAddresses ? try columns(in: "addresses") : []
+        let senderExpression = hasAddresses ? coalesceRawExpression(candidates: ["address", "comment"], columns: addressColumns, tableAlias: "a", fallback: "CAST(msg.sender AS TEXT)") : (messageColumns.contains("sender") ? "CAST(msg.sender AS TEXT)" : "NULL")
+        let senderJoin = hasAddresses ? "LEFT JOIN addresses a ON a.ROWID = msg.sender" : ""
+        let hasSubjects = try tableExists("subjects") && messageColumns.contains("subject")
+        let subjectColumns = hasSubjects ? try columns(in: "subjects") : []
+        let subjectExpression = hasSubjects ? coalesceRawExpression(candidates: ["subject"], columns: subjectColumns, tableAlias: "s", fallback: "CAST(msg.subject AS TEXT)") : (messageColumns.contains("subject") ? "CAST(msg.subject AS TEXT)" : "NULL")
+        let subjectJoin = hasSubjects ? "LEFT JOIN subjects s ON s.ROWID = msg.subject" : ""
+        let dateExpression = coalesceRawExpression(candidates: ["date_sent", "date_received", "date_last_viewed"], columns: messageColumns, tableAlias: "msg", fallback: "0")
+        let mailboxJoin = messageColumns.contains("mailbox") ? "LEFT JOIN mailboxes mb ON mb.ROWID = msg.mailbox" : "LEFT JOIN mailboxes mb ON 0"
+        let sql = """
+            SELECT
+                \(senderExpression) AS sender,
+                \(subjectExpression) AS subject,
+                datetime(\(dateExpression), 'unixepoch') AS sentAt,
+                \(mailbox) AS mailbox
+            FROM messages msg
+            \(mailboxJoin)
+            \(senderJoin)
+            \(subjectJoin)
+            WHERE 1 = 1\(accountFilter)\(mailboxFilter)
+            ORDER BY \(dateExpression) DESC
+            LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+            """
+        return try query(sql).map { MetadataRow(kind: MetadataCommand.mailRecent.displayName, fields: $0) }
     }
 
     public static func defaultStore(for command: MetadataCommand) -> URL {
@@ -178,6 +304,26 @@ public struct LocalMetadataStoreReader: Sendable {
         }
         if data.isEmpty { return [] }
         return try JSONDecoder().decode([[String: MetadataValue]].self, from: data)
+    }
+
+    private func tableExists(_ table: String) throws -> Bool {
+        guard !table.isEmpty else { return false }
+        let rows = try query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '\(sqlEscape(table))' LIMIT 1;")
+        return !rows.isEmpty
+    }
+
+    private func columns(in table: String) throws -> Set<String> {
+        let rows = try query("PRAGMA table_info(\(table));")
+        return Set(rows.compactMap { $0["name"]?.stringValue })
+    }
+
+    private func validateSQLiteStore(featureName: String) throws {
+        guard FileManager.default.fileExists(atPath: database.path) else { throw LocalInventoryError.missingStore(database.path) }
+        do {
+            _ = try query("PRAGMA schema_version;")
+        } catch {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "\(featureName) store is not a readable SQLite database for this command")
+        }
     }
 
     private func requireConfirmationIfNeeded(command: MetadataCommand, options: MetadataOptions) throws {
@@ -564,6 +710,16 @@ private func bounded(_ value: Int, defaultValue: Int, max: Int) -> Int {
 
 private func sqlEscape(_ value: String) -> String {
     value.replacingOccurrences(of: "'", with: "''")
+}
+
+private func coalesceExpression(candidates: [String], columns: Set<String>, alias: String, fallback: String) -> String {
+    "\(coalesceRawExpression(candidates: candidates, columns: columns, fallback: fallback)) AS \(alias)"
+}
+
+private func coalesceRawExpression(candidates: [String], columns: Set<String>, tableAlias: String? = nil, fallback: String) -> String {
+    let prefix = tableAlias.map { "\($0)." } ?? ""
+    let available = candidates.filter { columns.contains($0) }.map { "\(prefix)\($0)" }
+    return "COALESCE(\((available + [fallback]).joined(separator: ", ")))"
 }
 
 private func redactURL(_ raw: String) -> String {
