@@ -39,7 +39,8 @@ public struct CommandRunner: Sendable {
                 output(try render(report, format: options.format))
                 return 0
             case .contactsList(let options):
-                let contacts = try LocalSQLiteInventoryReader(database: options.addressBookDatabase).contacts(search: options.search, limit: options.limit, includeNotes: options.includeNotes)
+                let database = AddressBookStoreResolver(defaultDatabase: options.addressBookDatabase).database()
+                let contacts = try LocalSQLiteInventoryReader(database: database).contacts(search: options.search, limit: options.limit, includeNotes: options.includeNotes)
                 output(try render(contacts, format: options.format))
                 return 0
             case .devicesList(let options):

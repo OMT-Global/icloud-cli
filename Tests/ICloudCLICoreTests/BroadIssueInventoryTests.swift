@@ -188,6 +188,34 @@ import Testing
     #expect(recents.isEmpty == false)
 }
 
+@Test func reportsUnsupportedSchemaForLiveStoreDrift() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "schema-drift")
+    let database = root.appendingPathComponent("drift.sqlite")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try runSQLiteForBroadIssues(database: database, sql: "CREATE TABLE live_notes (id INTEGER PRIMARY KEY, title TEXT);")
+
+    do {
+        _ = try LocalSQLiteInventoryReader(database: database).notes(folder: nil, modifiedSince: nil, includeBody: false)
+        Issue.record("Expected unsupported schema error")
+    } catch LocalInventoryError.unsupportedSchema(let store, let detail) {
+        #expect(store == database.path)
+        #expect(detail.localizedCaseInsensitiveContains("no such table"))
+    } catch {
+        Issue.record("Expected unsupported schema error, got \(error)")
+    }
+}
+
+@Test func driveReaderAcceptsFilePathScope() throws {
+    let root = try mobileDocumentsFixtureURLForBroadIssues()
+    let reader = ICloudDriveInventoryReader(rootDirectory: root)
+
+    let files = try reader.listFiles(path: "com~apple~CloudDocs/Documents/report.txt", depth: 1)
+
+    #expect(files.count == 1)
+    #expect(files.first?.path == "com~apple~CloudDocs/Documents/report.txt")
+    #expect(files.first?.iCloudStatus == .downloaded)
+}
+
 private func syntheticBroadInventoryDatabase() throws -> URL {
     let root = try temporaryDirectoryForBroadIssues(named: "broad-sqlite")
     let database = root.appendingPathComponent("inventory.sqlite")

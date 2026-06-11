@@ -79,6 +79,42 @@ import Testing
     #expect(try reader.newsTopics().map(\.name) == ["Technology"])
 }
 
+@Test func readsAppleMessagesChatDatabaseSchema() throws {
+    let database = try appleMessagesFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let conversations = try reader.messageConversations()
+
+    #expect(conversations.map(\.chatIdentifier) == ["iMessage;+;chat@example.com"])
+    #expect(conversations.first?.displayName == "Example Chat")
+    #expect(conversations.first?.participantCount == 1)
+    #expect(conversations.first?.messageCount == 1)
+
+    #expect(throws: LocalInventoryError.sensitiveConfirmationRequired("icloud-cli messages recent")) {
+        try reader.recentMessages(confirmSensitive: false, includeBody: false, since: nil, limit: 10)
+    }
+    let recent = try reader.recentMessages(confirmSensitive: true, includeBody: false, since: nil, limit: 10)
+    #expect(recent.map(\.chatIdentifier) == ["iMessage;+;chat@example.com"])
+    #expect(recent.first?.sender == "alice@example.com")
+    #expect(recent.first?.body == nil)
+}
+
+@Test func resolvesAddressBookDatabaseInsideSourcesDirectory() throws {
+    let root = try temporaryDirectory(named: "addressbook")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let defaultDatabase = root.appendingPathComponent("AddressBook-v22.abcddb")
+    let sourceDatabase = root
+        .appendingPathComponent("Sources/source-a", isDirectory: true)
+        .appendingPathComponent("AddressBook-v22.abcddb")
+    try FileManager.default.createDirectory(at: sourceDatabase.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: sourceDatabase)
+
+    let resolved = AddressBookStoreResolver(defaultDatabase: defaultDatabase).database()
+
+    #expect(resolved.standardizedFileURL.path == sourceDatabase.standardizedFileURL.path)
+}
+
 @Test func cacheStoreWritesReadsAndReportsStatus() throws {
     let root = try temporaryDirectory(named: "cache")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -89,6 +125,25 @@ import Testing
     #expect(status.first?.ok == false)
     #expect(try store.read(command: "unknown-command").ok == false)
     #expect(try store.status().map(\.command) == ["unknown-command"])
+}
+
+private func appleMessagesFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-messages")
+    let database = root.appendingPathComponent("chat.db")
+    let sql = """
+    CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, display_name TEXT);
+    CREATE TABLE message (ROWID INTEGER PRIMARY KEY, handle_id INTEGER, date INTEGER, is_from_me INTEGER, text TEXT);
+    CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
+    CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+    CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
+    INSERT INTO chat VALUES (1, 'chat-guid', 'iMessage;+;chat@example.com', 'Example Chat');
+    INSERT INTO handle VALUES (1, 'alice@example.com');
+    INSERT INTO message VALUES (1, 1, 771206400000000000, 0, 'private body');
+    INSERT INTO chat_message_join VALUES (1, 1);
+    INSERT INTO chat_handle_join VALUES (1, 1);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
 }
 
 private func syntheticInventoryDatabase() throws -> URL {

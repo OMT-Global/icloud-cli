@@ -77,6 +77,10 @@ public struct ICloudDriveInventoryReader: Sendable {
     public func listFiles(path requestedPath: String? = nil, depth: Int = 2) throws -> [ICloudDriveFile] {
         guard FileManager.default.fileExists(atPath: rootDirectory.path) else { throw DriveInventoryError.missingRoot(rootDirectory.path) }
         let startURL = try scopedURL(for: requestedPath)
+        let startValues = try? startURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+        if startValues?.isDirectory != true {
+            return [fileEntry(for: startURL, values: startValues)]
+        }
         let maxDepth = max(0, depth)
         var result: [ICloudDriveFile] = []
         try walkFiles(at: startURL, currentDepth: 0, maxDepth: maxDepth, into: &result)
@@ -146,6 +150,11 @@ public struct ICloudDriveInventoryReader: Sendable {
     }
 
     private func walkFiles(at directory: URL, currentDepth: Int, maxDepth: Int, into result: inout [ICloudDriveFile]) throws {
+        let directoryValues = try? directory.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+        if directoryValues?.isDirectory != true {
+            result.append(fileEntry(for: directory, values: directoryValues))
+            return
+        }
         let children = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey], options: [])
         for child in children {
             let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])

@@ -174,7 +174,7 @@ public struct LocalMetadataStoreReader: Sendable {
         let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         guard process.terminationStatus == 0 else {
-            throw LocalInventoryError.sqliteFailure(String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            throw sqliteError(from: errorData, store: database.path)
         }
         if data.isEmpty { return [] }
         return try JSONDecoder().decode([[String: MetadataValue]].self, from: data)
