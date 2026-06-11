@@ -282,14 +282,56 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func messageConversations() throws -> [MessageConversation] {
-        try query("SELECT chatIdentifier, displayName, participantCount, lastMessageAt, messageCount FROM message_conversations ORDER BY lastMessageAt DESC;")
+        if try tableExists("message_conversations") {
+            return try query("SELECT chatIdentifier, displayName, participantCount, lastMessageAt, messageCount FROM message_conversations ORDER BY lastMessageAt DESC;")
+        }
+        guard try tableExists("chat"), try tableExists("message"), try tableExists("chat_message_join") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing message_conversations or chat/message/chat_message_join tables")
+        }
+        return try query("""
+            SELECT
+                COALESCE(c.chat_identifier, c.guid) AS chatIdentifier,
+                c.display_name AS displayName,
+                COUNT(DISTINCT chj.handle_id) AS participantCount,
+                CAST(MAX(m.date) AS TEXT) AS lastMessageAt,
+                COUNT(m.ROWID) AS messageCount
+            FROM chat c
+            LEFT JOIN chat_message_join cmj ON cmj.chat_id = c.ROWID
+            LEFT JOIN message m ON m.ROWID = cmj.message_id
+            LEFT JOIN chat_handle_join chj ON chj.chat_id = c.ROWID
+            GROUP BY c.ROWID
+            ORDER BY MAX(m.date) DESC;
+            """)
     }
 
     public func recentMessages(confirmSensitive: Bool, includeBody: Bool, since: String?, limit: Int) throws -> [MessageRecentEntry] {
         guard confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli messages recent") }
         let floor = since ?? ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -86_400))
         let bodyColumn = includeBody ? "body" : "NULL AS body"
-        return try query("SELECT chatIdentifier, sender, sentAt, isFromMe, \(bodyColumn) FROM recent_messages WHERE sentAt >= '\(sqlEscape(floor))' ORDER BY sentAt DESC LIMIT \(bounded(limit, defaultValue: 20, max: 1000));")
+        if try tableExists("recent_messages") {
+            return try query("SELECT chatIdentifier, sender, sentAt, isFromMe, \(bodyColumn) FROM recent_messages WHERE sentAt >= '\(sqlEscape(floor))' ORDER BY sentAt DESC LIMIT \(bounded(limit, defaultValue: 20, max: 1000));")
+        }
+        guard try tableExists("message"), try tableExists("chat"), try tableExists("chat_message_join") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing recent_messages or message/chat/chat_message_join tables")
+        }
+        let appleBodyColumn = includeBody ? "m.text" : "NULL AS body"
+        let appleFloor = since.flatMap { Int64($0) }
+        let floorPredicate = appleFloor.map { "WHERE m.date >= \($0)" } ?? ""
+        return try query("""
+            SELECT
+                COALESCE(c.chat_identifier, c.guid) AS chatIdentifier,
+                h.id AS sender,
+                CAST(m.date AS TEXT) AS sentAt,
+                m.is_from_me AS isFromMe,
+                \(appleBodyColumn)
+            FROM message m
+            LEFT JOIN handle h ON h.ROWID = m.handle_id
+            LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+            LEFT JOIN chat c ON c.ROWID = cmj.chat_id
+            \(floorPredicate)
+            ORDER BY m.date DESC
+            LIMIT \(bounded(limit, defaultValue: 20, max: 1000));
+            """)
     }
 
     public func contacts(search: String?, limit: Int, includeNotes: Bool) throws -> [ContactEntry] {
@@ -352,6 +394,15 @@ public struct LocalSQLiteInventoryReader: Sendable {
         if data.isEmpty { return [] }
         return try JSONDecoder().decode([T].self, from: data)
     }
+
+    private func tableExists(_ name: String) throws -> Bool {
+        let rows: [SQLiteTableRow] = try query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '\(sqlEscape(name))' LIMIT 1;")
+        return !rows.isEmpty
+    }
+}
+
+private struct SQLiteTableRow: Decodable {
+    let name: String
 }
 
 func sqliteError(from errorData: Data, store: String) -> LocalInventoryError {
