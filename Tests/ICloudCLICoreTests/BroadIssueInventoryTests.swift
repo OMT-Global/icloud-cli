@@ -222,8 +222,10 @@ private func syntheticBroadInventoryDatabase() throws -> URL {
     INSERT INTO home_accessories VALUES ('House', 'Office', 'Lamp', 'Example', 'A1', 'light', 0);
     CREATE TABLE home_scenes (home TEXT, name TEXT, accessoryCount INTEGER);
     INSERT INTO home_scenes VALUES ('House', 'Work', 1);
-    CREATE TABLE safari_cloud_tabs (deviceName TEXT, title TEXT, url TEXT, lastSyncedAt TEXT);
-    INSERT INTO safari_cloud_tabs VALUES ('Example iPhone', 'Example Page', 'https://example.com/private/path', '2026-05-10T09:00:00Z');
+    CREATE TABLE cloud_tab_devices (device_uuid TEXT PRIMARY KEY, system_fields BLOB, device_name TEXT, has_duplicate_device_name INTEGER, is_ephemeral_device INTEGER, last_modified TEXT);
+    CREATE TABLE cloud_tabs (tab_uuid TEXT PRIMARY KEY, system_fields BLOB, device_uuid TEXT, position INTEGER, title TEXT, url TEXT, is_showing_reader INTEGER, is_pinned INTEGER, reader_scroll_position_page_index INTEGER, scene_id TEXT);
+    INSERT INTO cloud_tab_devices VALUES ('device-1', NULL, 'Example iPhone', 0, 0, '2026-05-10T09:00:00Z');
+    INSERT INTO cloud_tabs VALUES ('tab-1', NULL, 'device-1', 1, 'Example Page', 'https://example.com/private/path', 0, 0, NULL, 'scene-1');
     CREATE TABLE safari_profiles (name TEXT, identifier TEXT, isDefault INTEGER, tabCount INTEGER, bookmarkCount INTEGER, lastActiveAt TEXT);
     INSERT INTO safari_profiles VALUES ('Work', 'work', 0, 1, 2, '2026-05-10T09:00:00Z');
     CREATE TABLE safari_extensions (profile TEXT, bundleID TEXT, displayName TEXT, enabled INTEGER, type TEXT);
