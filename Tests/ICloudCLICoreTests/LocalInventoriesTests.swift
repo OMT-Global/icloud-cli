@@ -28,6 +28,14 @@ import Testing
     #expect(safariOptions.confirmSensitive == true)
     #expect(safariOptions.redactURLs == true)
 
+    let messages = try CLIParser().parse(arguments: ["icloud-cli", "messages", "conversations", "--limit", "5", "--chat-db", "/tmp/chat.db"])
+    guard case .messagesConversations(let messagesOptions) = messages else {
+        Issue.record("Expected messages conversations command")
+        return
+    }
+    #expect(messagesOptions.limit == 5)
+    #expect(messagesOptions.chatDatabase.path == "/tmp/chat.db")
+
     let watch = try CLIParser().parse(arguments: ["icloud-cli", "watch", "--once", "--commands", "safari-tabs,storage-status", "--output-dir", "/tmp/cache"])
     guard case .watch(let watchOptions) = watch else {
         Issue.record("Expected watch command")
@@ -100,6 +108,16 @@ import Testing
     #expect(recent.first?.body == nil)
 }
 
+@Test func limitsMessageConversations() throws {
+    let database = try messageConversationsFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let conversations = try reader.messageConversations(limit: 1)
+
+    #expect(conversations.map(\.chatIdentifier) == ["chat-new"])
+}
+
 @Test func resolvesAddressBookDatabaseInsideSourcesDirectory() throws {
     let root = try temporaryDirectory(named: "addressbook")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -141,6 +159,18 @@ private func appleMessagesFixtureDatabase() throws -> URL {
     INSERT INTO message VALUES (1, 1, 771206400000000000, 0, 'private body');
     INSERT INTO chat_message_join VALUES (1, 1);
     INSERT INTO chat_handle_join VALUES (1, 1);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func messageConversationsFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "message-conversations")
+    let database = root.appendingPathComponent("inventory.sqlite")
+    let sql = """
+    CREATE TABLE message_conversations (chatIdentifier TEXT, displayName TEXT, participantCount INTEGER, lastMessageAt TEXT, messageCount INTEGER);
+    INSERT INTO message_conversations VALUES ('chat-old', 'Old Chat', 1, '2026-01-01T00:00:00Z', 1);
+    INSERT INTO message_conversations VALUES ('chat-new', 'New Chat', 1, '2026-01-02T00:00:00Z', 1);
     """
     try runSQLite(database: database, sql: sql)
     return database
