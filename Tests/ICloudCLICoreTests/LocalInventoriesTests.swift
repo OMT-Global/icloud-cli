@@ -118,6 +118,25 @@ import Testing
     #expect(conversations.map(\.chatIdentifier) == ["chat-new"])
 }
 
+@Test func readsAppleAddressBookRecordSchema() throws {
+    let database = try appleAddressBookFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let contacts = try reader.contacts(search: "Alice", limit: 10, includeNotes: false)
+
+    #expect(contacts.map(\.displayName) == ["Alice Example"])
+    #expect(contacts.first?.givenName == "Alice")
+    #expect(contacts.first?.familyName == "Example")
+    #expect(contacts.first?.organizationName == "Example Org")
+    #expect(contacts.first?.emails == [ContactEntry.Field(label: "work", value: "alice@example.com")])
+    #expect(contacts.first?.phones == [ContactEntry.Field(label: "mobile", value: "+15550101")])
+    #expect(contacts.first?.note == nil)
+
+    let withNotes = try reader.contacts(search: nil, limit: 10, includeNotes: true)
+    #expect(withNotes.first?.note == "private note")
+}
+
 @Test func readsAppleNotesStoreSchema() throws {
     let database = try appleNotesFixtureDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
@@ -189,6 +208,36 @@ private func messageConversationsFixtureDatabase() throws -> URL {
     CREATE TABLE message_conversations (chatIdentifier TEXT, displayName TEXT, participantCount INTEGER, lastMessageAt TEXT, messageCount INTEGER);
     INSERT INTO message_conversations VALUES ('chat-old', 'Old Chat', 1, '2026-01-01T00:00:00Z', 1);
     INSERT INTO message_conversations VALUES ('chat-new', 'New Chat', 1, '2026-01-02T00:00:00Z', 1);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func appleAddressBookFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-addressbook")
+    let database = root.appendingPathComponent("AddressBook-v22.abcddb")
+    let sql = """
+    CREATE TABLE ZABCDRECORD (
+        Z_PK INTEGER PRIMARY KEY,
+        ZFIRSTNAME TEXT,
+        ZLASTNAME TEXT,
+        ZORGANIZATION TEXT,
+        ZNOTE TEXT
+    );
+    CREATE TABLE ZABCDEMAILADDRESS (
+        ZOWNER INTEGER,
+        ZADDRESS TEXT,
+        ZLABEL TEXT
+    );
+    CREATE TABLE ZABCDPHONENUMBER (
+        ZOWNER INTEGER,
+        ZFULLNUMBER TEXT,
+        ZLABEL TEXT
+    );
+    INSERT INTO ZABCDRECORD VALUES (1, 'Alice', 'Example', 'Example Org', 'private note');
+    INSERT INTO ZABCDRECORD VALUES (2, NULL, NULL, 'Example Org', 'org note');
+    INSERT INTO ZABCDEMAILADDRESS VALUES (1, 'alice@example.com', 'work');
+    INSERT INTO ZABCDPHONENUMBER VALUES (1, '+15550101', 'mobile');
     """
     try runSQLite(database: database, sql: sql)
     return database

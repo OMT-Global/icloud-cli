@@ -384,12 +384,78 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func contacts(search: String?, limit: Int, includeNotes: Bool) throws -> [ContactEntry] {
+        if try tableExists("contacts") {
+            return try syntheticContacts(search: search, limit: limit, includeNotes: includeNotes)
+        }
+        if try tableExists("ZABCDRECORD") {
+            return try appleContacts(search: search, limit: limit, includeNotes: includeNotes)
+        }
+        throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "no such table: contacts; missing contacts or ZABCDRECORD tables")
+    }
+
+    private func syntheticContacts(search: String?, limit: Int, includeNotes: Bool) throws -> [ContactEntry] {
         let noteColumn = includeNotes ? "note" : "NULL AS note"
         let whereClause = search.map {
             let term = sqlEscape($0)
             return " WHERE displayName LIKE '%\(term)%' OR givenName LIKE '%\(term)%' OR familyName LIKE '%\(term)%' OR emails LIKE '%\(term)%' OR phones LIKE '%\(term)%'"
         } ?? ""
         let rows: [RawContactRow] = try query("SELECT displayName, givenName, familyName, organizationName, emails, phones, \(noteColumn) FROM contacts\(whereClause) ORDER BY displayName ASC LIMIT \(bounded(limit, defaultValue: 50, max: 1000));")
+        return rows.map { row in
+            ContactEntry(
+                displayName: row.displayName,
+                givenName: row.givenName,
+                familyName: row.familyName,
+                organizationName: row.organizationName,
+                emails: parseContactFields(row.emails),
+                phones: parseContactFields(row.phones),
+                note: row.note
+            )
+        }
+    }
+
+    private func appleContacts(search: String?, limit: Int, includeNotes: Bool) throws -> [ContactEntry] {
+        let givenNameColumn = try contactColumnExpression(["ZFIRSTNAME", "ZGIVENNAME", "ZFIRSTNAME1"], alias: "givenName")
+        let familyNameColumn = try contactColumnExpression(["ZLASTNAME", "ZFAMILYNAME", "ZLASTNAME1"], alias: "familyName")
+        let organizationColumn = try contactColumnExpression(["ZORGANIZATION", "ZORGANIZATIONNAME", "ZCOMPANY"], alias: "organizationName")
+        let noteColumn = includeNotes ? try contactColumnExpression(["ZNOTE", "ZNOTES"], alias: "note") : "NULL AS note"
+        let displayNameExpression = try contactDisplayNameExpression()
+        let emailsColumn = try contactFieldListSubquery(
+            table: "ZABCDEMAILADDRESS",
+            ownerCandidates: ["ZOWNER", "Z22_OWNER"],
+            valueCandidates: ["ZADDRESS", "ZADDRESSNORMALIZED"],
+            alias: "emails"
+        )
+        let phonesColumn = try contactFieldListSubquery(
+            table: "ZABCDPHONENUMBER",
+            ownerCandidates: ["ZOWNER", "Z22_OWNER"],
+            valueCandidates: ["ZFULLNUMBER", "ZLOCALNUMBER"],
+            alias: "phones"
+        )
+        let searchClause = search.map { term -> String in
+            let escaped = sqlEscape(term)
+            return """
+             WHERE \(displayNameExpression) LIKE '%\(escaped)%'
+                OR COALESCE(\(contactColumnReference(["ZFIRSTNAME", "ZGIVENNAME", "ZFIRSTNAME1"])), '') LIKE '%\(escaped)%'
+                OR COALESCE(\(contactColumnReference(["ZLASTNAME", "ZFAMILYNAME", "ZLASTNAME1"])), '') LIKE '%\(escaped)%'
+                OR COALESCE(\(contactColumnReference(["ZORGANIZATION", "ZORGANIZATIONNAME", "ZCOMPANY"])), '') LIKE '%\(escaped)%'
+                OR COALESCE(\(emailsColumn.searchExpression), '') LIKE '%\(escaped)%'
+                OR COALESCE(\(phonesColumn.searchExpression), '') LIKE '%\(escaped)%'
+            """
+        } ?? ""
+        let rows: [RawContactRow] = try query("""
+            SELECT
+                \(displayNameExpression) AS displayName,
+                \(givenNameColumn),
+                \(familyNameColumn),
+                \(organizationColumn),
+                \(emailsColumn.selectExpression),
+                \(phonesColumn.selectExpression),
+                \(noteColumn)
+            FROM ZABCDRECORD
+            \(searchClause)
+            ORDER BY \(displayNameExpression) ASC
+            LIMIT \(bounded(limit, defaultValue: 50, max: 1000));
+            """)
         return rows.map { row in
             ContactEntry(
                 displayName: row.displayName,
@@ -453,6 +519,53 @@ public struct LocalSQLiteInventoryReader: Sendable {
         let rows: [SQLitePragmaColumnRow] = try query("PRAGMA table_info('\(sqlEscape(table))');")
         return rows.contains { $0.name == column }
     }
+
+    private func contactColumnReference(_ candidates: [String]) -> String {
+        for column in candidates {
+            if (try? columnExists("ZABCDRECORD", column)) == true {
+                return column
+            }
+        }
+        return "NULL"
+    }
+
+    private func contactColumnExpression(_ candidates: [String], alias: String) throws -> String {
+        for column in candidates {
+            if try columnExists("ZABCDRECORD", column) {
+                return "\(column) AS \(alias)"
+            }
+        }
+        return "NULL AS \(alias)"
+    }
+
+    private func contactDisplayNameExpression() throws -> String {
+        let display = try ["ZDISPLAYNAME", "ZFULLNAME", "ZCOMPOSITEIDENTIFIER"].first { try columnExists("ZABCDRECORD", $0) }
+        let given = contactColumnReference(["ZFIRSTNAME", "ZGIVENNAME", "ZFIRSTNAME1"])
+        let family = contactColumnReference(["ZLASTNAME", "ZFAMILYNAME", "ZLASTNAME1"])
+        let organization = contactColumnReference(["ZORGANIZATION", "ZORGANIZATIONNAME", "ZCOMPANY"])
+        let preferred = display.map { "\($0)" } ?? "NULL"
+        return "COALESCE(NULLIF(\(preferred), ''), NULLIF(TRIM(COALESCE(\(given), '') || ' ' || COALESCE(\(family), '')), ''), NULLIF(\(organization), ''), 'Contact ' || Z_PK)"
+    }
+
+    private func contactFieldListSubquery(table: String, ownerCandidates: [String], valueCandidates: [String], alias: String) throws -> ContactFieldListSQL {
+        guard try tableExists(table) else {
+            return ContactFieldListSQL(selectExpression: "NULL AS \(alias)", searchExpression: "NULL")
+        }
+        let ownerColumn = try ownerCandidates.first { try columnExists(table, $0) }
+        let valueColumn = try valueCandidates.first { try columnExists(table, $0) }
+        guard let ownerColumn, let valueColumn else {
+            return ContactFieldListSQL(selectExpression: "NULL AS \(alias)", searchExpression: "NULL")
+        }
+        let labelExpression = try columnExists(table, "ZLABEL") ? "COALESCE(NULLIF(ZLABEL, ''), 'other')" : "'other'"
+        let subquery = """
+        (SELECT group_concat(\(labelExpression) || ':' || \(valueColumn), ',')
+             FROM \(table)
+             WHERE \(table).\(ownerColumn) = ZABCDRECORD.Z_PK
+               AND \(valueColumn) IS NOT NULL
+               AND \(valueColumn) != '')
+        """
+        return ContactFieldListSQL(selectExpression: "\(subquery) AS \(alias)", searchExpression: subquery)
+    }
 }
 
 public struct AddressBookStoreResolver: Sendable {
@@ -492,6 +605,11 @@ private struct SQLiteTableRow: Decodable {
 
 private struct SQLitePragmaColumnRow: Decodable {
     let name: String
+}
+
+private struct ContactFieldListSQL {
+    let selectExpression: String
+    let searchExpression: String
 }
 
 func sqliteError(from errorData: Data, store: String) -> LocalInventoryError {
