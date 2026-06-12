@@ -329,9 +329,9 @@ public struct LocalSQLiteInventoryReader: Sendable {
         return rows.map { SafariHistoryEntry(url: redactURL($0.url), title: $0.title, visitedAt: $0.visitedAt, visitCount: $0.visitCount) }
     }
 
-    public func messageConversations() throws -> [MessageConversation] {
+    public func messageConversations(limit: Int = 50) throws -> [MessageConversation] {
         if try tableExists("message_conversations") {
-            return try query("SELECT chatIdentifier, displayName, participantCount, lastMessageAt, messageCount FROM message_conversations ORDER BY lastMessageAt DESC;")
+            return try query("SELECT chatIdentifier, displayName, participantCount, lastMessageAt, messageCount FROM message_conversations ORDER BY lastMessageAt DESC LIMIT \(bounded(limit, defaultValue: 50, max: 1000));")
         }
         guard try tableExists("chat"), try tableExists("message"), try tableExists("chat_message_join") else {
             throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing message_conversations or chat/message/chat_message_join tables")
@@ -348,7 +348,8 @@ public struct LocalSQLiteInventoryReader: Sendable {
             LEFT JOIN message m ON m.ROWID = cmj.message_id
             LEFT JOIN chat_handle_join chj ON chj.chat_id = c.ROWID
             GROUP BY c.ROWID
-            ORDER BY MAX(m.date) DESC;
+            ORDER BY MAX(m.date) DESC
+            LIMIT \(bounded(limit, defaultValue: 50, max: 1000));
             """)
     }
 

@@ -1343,7 +1343,7 @@ Usage:
   icloud-cli findmy devices|people [--include-coordinates] [--format json|text] [--findmy-store PATH]
   icloud-cli mail accounts|mailboxes [--account NAME] [--format json|text] [--mail-store PATH]
   icloud-cli mail recent [--confirm-sensitive] [--account NAME] [--mailbox NAME] [--limit N] [--format json|text] [--mail-store PATH]
-  icloud-cli messages conversations [--format json|text] [--chat-db PATH]
+  icloud-cli messages conversations [--limit N] [--format json|text] [--chat-db PATH]
   icloud-cli messages recent [--confirm-sensitive] [--include-body] [--since ISO8601] [--limit N] [--format json|text] [--chat-db PATH]
   icloud-cli maps favorites [--format json|text] [--maps-store PATH]
   icloud-cli maps recents [--limit N] [--format json|text] [--maps-store PATH]

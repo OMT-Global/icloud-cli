@@ -72,7 +72,7 @@ public struct CommandRunner: Sendable {
                 output(try render(places, format: options.format))
                 return 0
             case .messagesConversations(let options):
-                let conversations = try LocalSQLiteInventoryReader(database: options.chatDatabase).messageConversations()
+                let conversations = try LocalSQLiteInventoryReader(database: options.chatDatabase).messageConversations(limit: options.limit)
                 output(try render(conversations, format: options.format))
                 return 0
             case .messagesRecent(let options):
