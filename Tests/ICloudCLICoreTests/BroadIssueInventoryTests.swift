@@ -213,6 +213,7 @@ import Testing
         ["icloud-cli", "notes", "tags", "--store", database.path],
         ["icloud-cli", "notes", "shared", "--store", database.path],
         ["icloud-cli", "reminders", "flagged", "--store", database.path, "--include-notes"],
+        ["icloud-cli", "reminders", "today", "--store", database.path],
         ["icloud-cli", "reminders", "scheduled", "--store", database.path, "--since", "2026-01-01", "--until", "2026-12-31"],
         ["icloud-cli", "reminders", "assigned", "--store", database.path],
     ]
