@@ -77,6 +77,7 @@ import Testing
 
     #expect(help.contains("icloud-cli safari tabs"))
     #expect(help.contains("icloud-cli safari cloud-tabs probe"))
+    #expect(help.contains("Created by OMT-Global."))
 }
 
 @Test func parsesSafariBookmarksCommand() throws {
