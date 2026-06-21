@@ -1311,6 +1311,7 @@ public enum CLIHelp {
     public static func root() -> String {
         """
 icloud-cli \(version)
+Created by OMT-Global.
 
 Usage:
   icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
