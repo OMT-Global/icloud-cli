@@ -95,7 +95,7 @@ public struct CommandRunner: Sendable {
                 output(try render(notes, format: options.format))
                 return 0
             case .photosList(let options):
-                let photos = try PhotosInventoryReader(photosLibraryDirectory: options.photosLibrary).listPhotos()
+                let photos = try PhotosInventoryReader(photosLibraryDirectory: options.photosLibrary).listPhotos(limit: options.limit)
                 output(try render(photos, format: options.format))
                 return 0
             case .photosScreenshots(let options):
@@ -198,13 +198,13 @@ public struct CommandRunner: Sendable {
             return rendered
         case .driveStatus:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.syncStatus(path: options.path), format: options.format)
+            return try render(try reader.syncStatus(path: options.path, limit: options.limit), format: options.format)
         case .driveErrors:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.errorFiles(path: options.path), format: options.format)
+            return try render(try reader.errorFiles(path: options.path, limit: options.limit), format: options.format)
         case .driveShared:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.sharedItems(path: options.path), format: options.format)
+            return try render(try reader.sharedItems(path: options.path, limit: options.limit), format: options.format)
         case .driveRecents:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
             return try render(try reader.recentFiles(since: options.since, limit: options.limit), format: options.format)

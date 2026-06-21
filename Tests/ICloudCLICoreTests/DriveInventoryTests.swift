@@ -15,6 +15,12 @@ private func mobileDocumentsFixtureURL() throws -> URL {
     #expect(files.contains { $0.path == "com~apple~CloudDocs/Documents/.draft.md.icloud" && $0.name == "draft.md" && $0.iCloudStatus == .evicted && $0.sizeBytes == nil })
 }
 
+@Test func limitsICloudDriveFileWalks() throws {
+    let files = try ICloudDriveInventoryReader(rootDirectory: try mobileDocumentsFixtureURL()).listFiles(depth: Int.max, limit: 1)
+
+    #expect(files.count == 1)
+}
+
 @Test func scopesICloudDriveListToRelativePath() throws {
     let files = try ICloudDriveInventoryReader(rootDirectory: try mobileDocumentsFixtureURL()).listFiles(path: "com~example~Notes", depth: 1)
 
@@ -33,4 +39,11 @@ private func mobileDocumentsFixtureURL() throws -> URL {
 
     #expect(containers.map(\.bundleId).contains("com~apple~CloudDocs"))
     #expect(containers.map(\.bundleId).contains("com~example~Notes"))
+    #expect(containers.allSatisfy { $0.sizeBytes == nil })
+}
+
+@Test func computesICloudDriveContainerStatsWhenSortingBySize() throws {
+    let containers = try ICloudDriveInventoryReader(rootDirectory: try mobileDocumentsFixtureURL()).listContainers(sortBy: .size)
+
+    #expect(containers.contains { $0.bundleId == "com~apple~CloudDocs" && $0.sizeBytes != nil })
 }

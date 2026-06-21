@@ -3,6 +3,7 @@ import Foundation
 public enum LocalInventoryError: Error, LocalizedError, Equatable {
     case missingRoot(String)
     case missingStore(String)
+    case permissionDenied(String)
     case sensitiveConfirmationRequired(String)
     case unsupportedSchema(store: String, detail: String)
     case sqliteFailure(String)
@@ -11,6 +12,8 @@ public enum LocalInventoryError: Error, LocalizedError, Equatable {
         switch self {
         case .missingRoot(let path): return "Inventory root not available: \(path)"
         case .missingStore(let path): return "Inventory store not available: \(path)"
+        case .permissionDenied(let path):
+            return "Permission denied reading local inventory store: \(path). Grant Full Disk Access to the calling terminal or agent process, then retry."
         case .sensitiveConfirmationRequired(let command):
             return "\(command) reads high-sensitivity local data; rerun with --confirm-sensitive"
         case .unsupportedSchema(let store, let detail):
@@ -64,7 +67,7 @@ public struct PhotosInventoryReader: Sendable {
             .sorted { $0.filename.localizedStandardCompare($1.filename) == .orderedAscending }
     }
 
-    public func listPhotos() throws -> [PhotoAsset] {
+    public func listPhotos(limit: Int = 200) throws -> [PhotoAsset] {
         guard FileManager.default.fileExists(atPath: photosLibraryDirectory.path) else {
             throw LocalInventoryError.missingRoot(photosLibraryDirectory.path)
         }
@@ -75,6 +78,7 @@ public struct PhotosInventoryReader: Sendable {
         ) else {
             return []
         }
+        let maxAssets = bounded(limit, defaultValue: 200, max: 10_000)
         var assets: [PhotoAsset] = []
         for case let url as URL in enumerator {
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey])
@@ -88,6 +92,9 @@ public struct PhotosInventoryReader: Sendable {
                 isFavorite: false,
                 albumNames: []
             ))
+            if assets.count >= maxAssets {
+                break
+            }
         }
         return assets.sorted { $0.filename.localizedStandardCompare($1.filename) == .orderedAscending }
     }
@@ -615,6 +622,9 @@ private struct ContactFieldListSQL {
 func sqliteError(from errorData: Data, store: String) -> LocalInventoryError {
     let message = String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     let lowercased = message.lowercased()
+    if lowercased.contains("authorization denied") || lowercased.contains("operation not permitted") || lowercased.contains("permission denied") {
+        return .permissionDenied(store)
+    }
     if lowercased.contains("no such table") || lowercased.contains("no such column") {
         return .unsupportedSchema(store: store, detail: message)
     }

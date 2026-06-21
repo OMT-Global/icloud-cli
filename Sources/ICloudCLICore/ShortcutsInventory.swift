@@ -10,10 +10,12 @@ public struct ShortcutEntry: Codable, Equatable, Sendable {
 
 public enum ShortcutsInventoryError: Error, LocalizedError, Equatable {
     case missingDirectory(String)
+    case permissionDenied(String)
 
     public var errorDescription: String? {
         switch self {
         case .missingDirectory(let path): return "Shortcuts directory not available: \(path)"
+        case .permissionDenied(let path): return "Permission denied reading Shortcuts directory: \(path). Grant Full Disk Access to the calling terminal or agent process, then retry."
         }
     }
 }
@@ -30,7 +32,14 @@ public struct ShortcutsInventoryReader: Sendable {
             throw ShortcutsInventoryError.missingDirectory(shortcutsDirectory.path)
         }
 
-        let entries = try FileManager.default.contentsOfDirectory(at: shortcutsDirectory, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey], options: [])
+        let entries: [URL]
+        do {
+            entries = try FileManager.default.contentsOfDirectory(at: shortcutsDirectory, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey], options: [])
+        } catch CocoaError.fileReadNoPermission {
+            throw ShortcutsInventoryError.permissionDenied(shortcutsDirectory.path)
+        } catch {
+            throw error
+        }
         var shortcuts: [ShortcutEntry] = []
         for entry in entries where entry.pathExtension == "shortcut" {
             if let shortcut = try readShortcut(at: entry) {

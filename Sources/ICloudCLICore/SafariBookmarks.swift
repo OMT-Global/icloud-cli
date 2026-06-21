@@ -17,11 +17,12 @@ public struct SafariReadingListItem: Codable, Equatable, Sendable {
 }
 
 public enum SafariBookmarksError: Error, LocalizedError, Equatable {
-    case missingBookmarks(String), unreadableBookmarks(String), noBookmarksFound(String), noReadingListItemsFound(String)
+    case missingBookmarks(String), unreadableBookmarks(String), permissionDenied(String), noBookmarksFound(String), noReadingListItemsFound(String)
     public var errorDescription: String? {
         switch self {
         case .missingBookmarks(let path): return "No Safari bookmarks file found: \(path)"
         case .unreadableBookmarks(let path): return "Could not read Safari bookmarks file: \(path)"
+        case .permissionDenied(let path): return "Permission denied reading Safari bookmarks file: \(path). Grant Full Disk Access to the calling terminal or agent process, then retry."
         case .noBookmarksFound(let path): return "Safari bookmarks file did not contain bookmark URLs: \(path)"
         case .noReadingListItemsFound(let path): return "Safari bookmarks file did not contain reading list URLs: \(path)"
         }
@@ -46,8 +47,24 @@ public struct SafariBookmarksReader: Sendable {
     private var bookmarksPath: URL { safariDirectory.appendingPathComponent("Bookmarks.plist") }
     private func readBookmarksPlist() throws -> Any {
         guard FileManager.default.fileExists(atPath: bookmarksPath.path) else { throw SafariBookmarksError.missingBookmarks(bookmarksPath.path) }
-        do { return try PropertyListSerialization.propertyList(from: Data(contentsOf: bookmarksPath), options: [], format: nil) } catch { throw SafariBookmarksError.unreadableBookmarks(bookmarksPath.path) }
+        do {
+            return try PropertyListSerialization.propertyList(from: Data(contentsOf: bookmarksPath), options: [], format: nil)
+        } catch {
+            if isPermissionDenied(error) {
+                throw SafariBookmarksError.permissionDenied(bookmarksPath.path)
+            }
+            throw SafariBookmarksError.unreadableBookmarks(bookmarksPath.path)
+        }
     }
+}
+
+private func isPermissionDenied(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoPermissionError {
+        return true
+    }
+    let message = nsError.localizedDescription.lowercased()
+    return message.contains("permission") || message.contains("operation not permitted") || message.contains("authorization denied")
 }
 
 public struct SafariBookmarksPlistParser: Sendable {

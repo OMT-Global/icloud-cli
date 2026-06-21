@@ -158,6 +158,12 @@ import Testing
     }
 }
 
+@Test func safariPermissionErrorsDescribeFullDiskAccess() {
+    let error = SafariTabsError.permissionDenied(["/tmp/CurrentSession.plist"])
+
+    #expect(error.localizedDescription.contains("Full Disk Access"))
+}
+
 @Test func textRenderingIncludesTitleWhenPresent() throws {
     let rendered = try CommandRunner().render(
         [

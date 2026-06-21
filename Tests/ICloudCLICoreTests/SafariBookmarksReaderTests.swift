@@ -16,6 +16,12 @@ import Testing
     ])
 }
 
+@Test func safariBookmarksPermissionErrorsDescribeFullDiskAccess() {
+    let error = SafariBookmarksError.permissionDenied("/tmp/Bookmarks.plist")
+
+    #expect(error.localizedDescription.contains("Full Disk Access"))
+}
+
 @Test func readsSafariReadingListFixture() throws {
     let fixtureURL = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
@@ -46,6 +52,12 @@ import Testing
     #expect(sites == [
         SafariFrequentlyVisitedSite(title: "Dashboard", url: "https://example.com/dashboard", rank: 1),
     ])
+}
+
+@Test func safariFrequentlyVisitedPermissionErrorsDescribeFullDiskAccess() {
+    let error = SafariFrequentlyVisitedError.permissionDenied("/tmp/TopSites.plist")
+
+    #expect(error.localizedDescription.contains("Full Disk Access"))
 }
 
 @Test func rendersSafariFrequentlyVisitedText() throws {
