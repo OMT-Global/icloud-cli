@@ -695,7 +695,8 @@ public struct FinderTagsReader: Sendable {
     }
 
     public func items(tag: String, path: String?, limit: Int) throws -> [TaggedDriveItem] {
-        let files = try ICloudDriveInventoryReader(rootDirectory: driveRoot).listFiles(path: path, depth: Int.max)
+        let scanLimit = max(200, bounded(limit, defaultValue: 50, max: 1_000) * 5)
+        let files = try ICloudDriveInventoryReader(rootDirectory: driveRoot).listFiles(path: path, depth: Int.max, limit: scanLimit)
         return files
             .filter { $0.name.localizedCaseInsensitiveContains(tag) || $0.path.localizedCaseInsensitiveContains(".\(tag).") }
             .prefix(max(1, limit))

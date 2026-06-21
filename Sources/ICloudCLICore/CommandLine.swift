@@ -164,10 +164,12 @@ public struct PhotosScreenshotsOptions: Equatable, Sendable {
 public struct PhotosListOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var photosLibrary: URL
+    public var limit: Int
 
-    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary")) {
+    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary"), limit: Int = 200) {
         self.format = format
         self.photosLibrary = photosLibrary
+        self.limit = limit
     }
 }
 
@@ -1061,6 +1063,7 @@ public struct CLIParser: Sendable {
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--photos-library": options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1325,13 +1328,13 @@ Usage:
   icloud-cli handoff list [--limit N] [--format json|text] [--handoff-dir PATH]
   icloud-cli drive list [--path PATH] [--depth N] [--show-status] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive status [--path PATH] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive errors [--path PATH] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive shared [--path PATH] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive status [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive errors [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive shared [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
   icloud-cli drive recents [--since ISO8601] [--limit N] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
-  icloud-cli photos list [--format json|text] [--photos-library PATH]
+  icloud-cli photos list [--limit N] [--format json|text] [--photos-library PATH]
   icloud-cli photos shared-albums [--format json|text] [--photos-store PATH]
   icloud-cli photos shared-library [--format json|text] [--photos-store PATH]
   icloud-cli notes list [--folder NAME] [--modified-since ISO8601] [--include-body] [--format json|text] [--notes-store PATH]

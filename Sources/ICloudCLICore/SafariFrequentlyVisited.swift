@@ -15,12 +15,14 @@ public struct SafariFrequentlyVisitedSite: Codable, Equatable, Sendable {
 public enum SafariFrequentlyVisitedError: Error, LocalizedError, Equatable {
     case missingTopSites(String)
     case unreadableTopSites(String)
+    case permissionDenied(String)
     case noSitesFound(String)
 
     public var errorDescription: String? {
         switch self {
         case .missingTopSites(let path): return "No Safari frequently visited sites file found: \(path)"
         case .unreadableTopSites(let path): return "Could not read Safari frequently visited sites file: \(path)"
+        case .permissionDenied(let path): return "Permission denied reading Safari frequently visited sites file: \(path). Grant Full Disk Access to the calling terminal or agent process, then retry."
         case .noSitesFound(let path): return "Safari frequently visited sites file did not contain web URLs: \(path)"
         }
     }
@@ -34,12 +36,28 @@ public struct SafariFrequentlyVisitedReader: Sendable {
         let fileURL = safariDirectory.appendingPathComponent("TopSites.plist")
         guard FileManager.default.fileExists(atPath: fileURL.path) else { throw SafariFrequentlyVisitedError.missingTopSites(fileURL.path) }
         let data: Data
-        do { data = try Data(contentsOf: fileURL) } catch { throw SafariFrequentlyVisitedError.unreadableTopSites(fileURL.path) }
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            if isPermissionDenied(error) {
+                throw SafariFrequentlyVisitedError.permissionDenied(fileURL.path)
+            }
+            throw SafariFrequentlyVisitedError.unreadableTopSites(fileURL.path)
+        }
         let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
         let sites = SafariFrequentlyVisitedPlistParser().parse(plist)
         guard !sites.isEmpty else { throw SafariFrequentlyVisitedError.noSitesFound(fileURL.path) }
         return Array(sites.prefix(max(0, limit)))
     }
+}
+
+private func isPermissionDenied(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoPermissionError {
+        return true
+    }
+    let message = nsError.localizedDescription.lowercased()
+    return message.contains("permission") || message.contains("operation not permitted") || message.contains("authorization denied")
 }
 
 public struct SafariFrequentlyVisitedPlistParser: Sendable {

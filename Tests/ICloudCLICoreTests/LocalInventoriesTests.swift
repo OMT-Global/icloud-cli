@@ -61,6 +61,26 @@ import Testing
     #expect(try reader.listPhotos().map(\.mediaType) == ["photo"])
 }
 
+@Test func limitsSyntheticPhotoInventoryWalks() throws {
+    let root = try temporaryDirectory(named: "media-limit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let photos = root.appendingPathComponent("Photos.photoslibrary/originals")
+    try FileManager.default.createDirectory(at: photos, withIntermediateDirectories: true)
+    try Data("one".utf8).write(to: photos.appendingPathComponent("IMG_0001.HEIC"))
+    try Data("two".utf8).write(to: photos.appendingPathComponent("IMG_0002.HEIC"))
+
+    let reader = PhotosInventoryReader(photosLibraryDirectory: root.appendingPathComponent("Photos.photoslibrary"))
+
+    #expect(try reader.listPhotos(limit: 1).count == 1)
+}
+
+@Test func mapsSQLiteAuthorizationDeniedToPermissionError() {
+    let error = sqliteError(from: Data("Error: unable to open database \"/tmp/private.sqlite\": authorization denied".utf8), store: "/tmp/private.sqlite")
+
+    #expect(error == .permissionDenied("/tmp/private.sqlite"))
+    #expect(error.localizedDescription.contains("Full Disk Access"))
+}
+
 @Test func readsSyntheticSQLiteInventoriesAndSensitiveGates() throws {
     let database = try syntheticInventoryDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
