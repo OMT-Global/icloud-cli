@@ -268,7 +268,7 @@ public struct MapsOptions: Equatable, Sendable {
     public var store: URL
     public var limit: Int
 
-    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Library/Maps/Maps.sqlite"), limit: Int = 20) {
+    public init(format: OutputFormat = .json, store: URL = AppleMapsStoreResolver().database() ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Library/Maps/Maps.sqlite"), limit: Int = 20) {
         self.format = format
         self.store = store
         self.limit = limit
