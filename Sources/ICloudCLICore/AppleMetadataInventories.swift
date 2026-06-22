@@ -82,8 +82,17 @@ public struct LocalMetadataStoreReader: Sendable {
         if command == .safariCloudTabsList {
             return try cloudTabRows(options: options)
         }
+        if command == .booksCollections || command == .booksList {
+            return try booksRows(for: command, options: options)
+        }
         if command == .mailAccounts || command == .mailMailboxes || command == .mailRecent {
             return try mailRows(for: command, options: options)
+        }
+        if command == .notesAccounts || command == .notesFolders || command == .notesTags || command == .notesShared {
+            return try notesRows(for: command, options: options)
+        }
+        if command == .photosSharedAlbums || command == .photosSharedLibrary {
+            return try photosRows(for: command, options: options)
         }
         if command == .musicStatus || command == .musicPlaylists || command == .musicTracks {
             try validateSQLiteStore(featureName: "Music library")
@@ -98,30 +107,88 @@ public struct LocalMetadataStoreReader: Sendable {
     }
 
     private func cloudTabRows(options: MetadataOptions) throws -> [MetadataRow] {
+        guard try tableExists("cloud_tabs"), try tableExists("cloud_tab_devices") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing Safari cloud_tabs or cloud_tab_devices tables")
+        }
         var filters: [String] = []
         if let device = options.device {
             filters.append("d.device_name = '\(sqlEscape(device))'")
         }
+        let urlExpression = options.includeURLs ? "CAST(t.url AS TEXT)" : "NULL"
         let whereSQL = filters.isEmpty ? "" : " WHERE " + filters.joined(separator: " AND ")
         let sql = """
             SELECT
-                d.device_name AS deviceName,
-                t.title AS title,
-                t.url AS url,
-                d.last_modified AS lastSyncedAt,
-                t.position AS position,
-                t.is_pinned AS isPinned,
-                t.is_showing_reader AS isShowingReader,
-                t.scene_id AS sceneID
+                CAST(d.device_name AS TEXT) AS deviceName,
+                CAST(t.title AS TEXT) AS title,
+                \(urlExpression) AS url,
+                CAST(d.last_modified AS TEXT) AS lastSyncedAt,
+                CASE WHEN typeof(t.position) = 'integer' THEN t.position ELSE 0 END AS position,
+                COALESCE(t.is_pinned, 0) AS isPinned,
+                COALESCE(t.is_showing_reader, 0) AS isShowingReader,
+                CAST(t.scene_id AS TEXT) AS sceneID
             FROM cloud_tabs t
             LEFT JOIN cloud_tab_devices d ON d.device_uuid = t.device_uuid
             \(whereSQL)
-            ORDER BY d.device_name ASC, t.position ASC
+            ORDER BY d.device_name ASC, position ASC
             LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
             """
         return try query(sql)
             .map { MetadataRow(kind: MetadataCommand.safariCloudTabsList.displayName, fields: $0) }
             .map { redact(row: $0, command: .safariCloudTabsList, options: options) }
+    }
+
+    private func booksRows(for command: MetadataCommand, options: MetadataOptions) throws -> [MetadataRow] {
+        if try tableExists(command.tableName ?? "") {
+            guard let tableName = command.tableName else { return [] }
+            return try query("SELECT * FROM \(tableName)\(whereClause(for: command, options: options))\(orderClause(for: command)) LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));")
+                .map { MetadataRow(kind: command.displayName, fields: $0) }
+                .map { redact(row: $0, command: command, options: options) }
+        }
+        guard try tableExists("ZBKLIBRARYASSET") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing books or ZBKLIBRARYASSET tables")
+        }
+        switch command {
+        case .booksCollections:
+            guard try tableExists("ZBKCOLLECTION") else { return [] }
+            return try query("""
+                SELECT
+                    COALESCE(NULLIF(c.ZTITLE, ''), c.ZCOLLECTIONID, 'Collection ' || c.Z_PK) AS name,
+                    COUNT(m.Z_PK) AS bookCount
+                FROM ZBKCOLLECTION c
+                LEFT JOIN ZBKCOLLECTIONMEMBER m ON m.ZCOLLECTION = c.Z_PK
+                WHERE COALESCE(c.ZDELETEDFLAG, 0) = 0
+                GROUP BY c.Z_PK
+                ORDER BY name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .booksList:
+            let hasCollections = try tableExists("ZBKCOLLECTION")
+            let hasCollectionMembers = try tableExists("ZBKCOLLECTIONMEMBER")
+            let hasCollectionJoin = hasCollections && hasCollectionMembers
+            let collectionJoin = hasCollectionJoin ? """
+                LEFT JOIN ZBKCOLLECTIONMEMBER m ON m.ZASSET = a.Z_PK
+                LEFT JOIN ZBKCOLLECTION c ON c.Z_PK = m.ZCOLLECTION
+                """ : ""
+            let collectionColumn = collectionJoin.isEmpty ? "NULL" : "c.ZTITLE"
+            let collectionFilter = options.collection.map { " AND \(collectionColumn) = '\(sqlEscape($0))'" } ?? ""
+            let rows = try query("""
+                SELECT
+                    COALESCE(NULLIF(a.ZTITLE, ''), a.ZASSETID, 'Book ' || a.Z_PK) AS title,
+                    a.ZAUTHOR AS author,
+                    a.ZKIND AS format,
+                    \(collectionColumn) AS collection,
+                    CAST(a.ZREADINGPROGRESS * 100 AS INTEGER) AS progressPercent,
+                    NULL AS highlightCount
+                FROM ZBKLIBRARYASSET a
+                \(collectionJoin)
+                WHERE COALESCE(a.ZISHIDDEN, 0) = 0\(collectionFilter)
+                ORDER BY title ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+            return rows.map { redact(row: $0, command: command, options: options) }
+        default:
+            return []
+        }
     }
 
     private func mailRows(for command: MetadataCommand, options: MetadataOptions) throws -> [MetadataRow] {
@@ -142,6 +209,137 @@ public struct LocalMetadataStoreReader: Sendable {
             return try appleMailMailboxes(options: options)
         case .mailRecent:
             return try appleMailRecent(options: options)
+        default:
+            return []
+        }
+    }
+
+    private func notesRows(for command: MetadataCommand, options: MetadataOptions) throws -> [MetadataRow] {
+        if try tableExists(command.tableName ?? "") {
+            guard let tableName = command.tableName else { return [] }
+            return try query("SELECT * FROM \(tableName)\(whereClause(for: command, options: options))\(orderClause(for: command)) LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));")
+                .map { MetadataRow(kind: command.displayName, fields: $0) }
+        }
+        guard try tableExists("ZICCLOUDSYNCINGOBJECT") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing notes metadata tables or ZICCLOUDSYNCINGOBJECT table")
+        }
+        switch command {
+        case .notesAccounts:
+            let columns = try columns(in: "ZICCLOUDSYNCINGOBJECT")
+            let accountExpression = columns.contains("ZACCOUNTNAMEFORACCOUNTLISTSORTING") ? "COALESCE(NULLIF(ZACCOUNTNAMEFORACCOUNTLISTSORTING, ''), 'Local Notes')" : "'Local Notes'"
+            let folderPredicate = columns.contains("ZNAME") ? "(ZTITLE2 IS NOT NULL OR ZNAME IS NOT NULL)" : "ZTITLE2 IS NOT NULL"
+            return try query("""
+                SELECT
+                    \(accountExpression) AS name,
+                    COUNT(CASE WHEN ZTITLE1 IS NOT NULL THEN 1 END) AS noteCount,
+                    COUNT(CASE WHEN \(folderPredicate) THEN 1 END) AS folderCount
+                FROM ZICCLOUDSYNCINGOBJECT
+                WHERE COALESCE(ZMARKEDFORDELETION, 0) = 0
+                GROUP BY name
+                ORDER BY name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .notesFolders:
+            let columns = try columns(in: "ZICCLOUDSYNCINGOBJECT")
+            let nameCandidates = [
+                columns.contains("ZTITLE2") ? "NULLIF(f.ZTITLE2, '')" : nil,
+                columns.contains("ZNAME") ? "NULLIF(f.ZNAME, '')" : nil,
+                "'Folder ' || f.Z_PK",
+            ].compactMap { $0 }
+            let nameExpression = "COALESCE(\(nameCandidates.joined(separator: ", ")))"
+            let accountExpression = columns.contains("ZACCOUNTNAMEFORACCOUNTLISTSORTING") ? "f.ZACCOUNTNAMEFORACCOUNTLISTSORTING" : "NULL"
+            let accountFilter = options.account.map { " AND \(accountExpression) = '\(sqlEscape($0))'" } ?? ""
+            let sharedExpression = columns.contains("ZISSHAREDIRTY") ? "COALESCE(f.ZISSHAREDIRTY, 0)" : "0"
+            let folderPredicate = columns.contains("ZNAME") ? "(f.ZTITLE2 IS NOT NULL OR f.ZNAME IS NOT NULL)" : "f.ZTITLE2 IS NOT NULL"
+            return try query("""
+                SELECT
+                    \(nameExpression) AS name,
+                    \(accountExpression) AS account,
+                    COUNT(n.Z_PK) AS noteCount,
+                    \(sharedExpression) AS shared
+                FROM ZICCLOUDSYNCINGOBJECT f
+                LEFT JOIN ZICCLOUDSYNCINGOBJECT n ON n.ZFOLDER = f.Z_PK AND n.ZTITLE1 IS NOT NULL AND COALESCE(n.ZMARKEDFORDELETION, 0) = 0
+                WHERE \(folderPredicate)\(accountFilter)
+                  AND COALESCE(f.ZMARKEDFORDELETION, 0) = 0
+                GROUP BY f.Z_PK
+                ORDER BY name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .notesTags:
+            return []
+        case .notesShared:
+            guard try tableExists("ZICINVITATION") else { return [] }
+            return try query("""
+                SELECT
+                    COALESCE(NULLIF(ZTITLE, ''), 'Shared Note') AS title,
+                    COALESCE(ZNOTECOUNT, 0) AS noteCount
+                FROM ZICINVITATION
+                ORDER BY title ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        default:
+            return []
+        }
+    }
+
+    private func photosRows(for command: MetadataCommand, options: MetadataOptions) throws -> [MetadataRow] {
+        if try tableExists(command.tableName ?? "") {
+            guard let tableName = command.tableName else { return [] }
+            return try query("SELECT * FROM \(tableName)\(whereClause(for: command, options: options))\(orderClause(for: command)) LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));")
+                .map { MetadataRow(kind: command.displayName, fields: $0) }
+        }
+        switch command {
+        case .photosSharedAlbums:
+            guard try tableExists("ZGENERICALBUM") else {
+                throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing photos_shared_albums or ZGENERICALBUM tables")
+            }
+            let columns = try columns(in: "ZGENERICALBUM")
+            let titleExpression = coalesceRawExpression(candidates: ["ZTITLE", "ZCLOUDGUID", "ZUUID"], columns: columns, fallback: "'Shared Album ' || Z_PK")
+            let assetCountExpression = coalesceRawExpression(candidates: ["ZCACHEDCOUNT", "ZCACHEDPHOTOSCOUNT"], columns: columns, fallback: "0")
+            let ownerExpression = columns.contains("ZCLOUDOWNERFULLNAME") ? "ZCLOUDOWNERFULLNAME" : "NULL"
+            let collaborationExpression = columns.contains("ZCLOUDMULTIPLECONTRIBUTORSENABLED") ? "COALESCE(ZCLOUDMULTIPLECONTRIBUTORSENABLED, 0)" : "0"
+            let updatedExpression = columns.contains("ZCLOUDLASTCONTRIBUTIONDATE") ? "CASE WHEN ZCLOUDLASTCONTRIBUTIONDATE IS NULL THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%SZ', ZCLOUDLASTCONTRIBUTIONDATE + 978307200, 'unixepoch') END" : "NULL"
+            let cloudPredicate = columns.contains("ZCLOUDGUID") ? "ZCLOUDGUID IS NOT NULL" : "1 = 1"
+            let trashedPredicate = columns.contains("ZTRASHEDSTATE") ? "COALESCE(ZTRASHEDSTATE, 0) = 0" : "1 = 1"
+            return try query("""
+                SELECT
+                    \(titleExpression) AS title,
+                    \(ownerExpression) AS owner,
+                    \(collaborationExpression) AS collaborationEnabled,
+                    \(assetCountExpression) AS assetCount,
+                    \(updatedExpression) AS updatedAt
+                FROM ZGENERICALBUM
+                WHERE \(cloudPredicate)
+                  AND \(trashedPredicate)
+                ORDER BY title ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .photosSharedLibrary:
+            guard try tableExists("ZSHARE") else {
+                throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing photos_shared_library or ZSHARE tables")
+            }
+            let columns = try columns(in: "ZSHARE")
+            let titleExpression = coalesceRawExpression(candidates: ["ZTITLE", "ZSCOPEIDENTIFIER", "ZUUID"], columns: columns, fallback: "'Shared Library'")
+            let assetCountExpression = coalesceRawExpression(candidates: ["ZASSETCOUNT", "ZCLOUDITEMCOUNT", "ZPHOTOSCOUNT"], columns: columns, fallback: "0")
+            let statusExpression = columns.contains("ZSTATUS") ? "ZSTATUS" : "NULL"
+            let scopeExpression = columns.contains("ZSCOPETYPE") ? "ZSCOPETYPE" : "NULL"
+            let trashedPredicate = columns.contains("ZTRASHEDSTATE") ? "COALESCE(ZTRASHEDSTATE, 0) = 0" : "1 = 1"
+            return try query("""
+                SELECT
+                    \(titleExpression) AS title,
+                    \(statusExpression) AS status,
+                    \(scopeExpression) AS scopeType,
+                    \(assetCountExpression) AS assetCount,
+                    COALESCE((
+                        SELECT COUNT(*)
+                        FROM ZSHAREPARTICIPANT p
+                        WHERE p.ZSHARE = ZSHARE.Z_PK OR p.Z66_SHARE = ZSHARE.Z_PK
+                    ), 0) AS participantCount
+                FROM ZSHARE
+                WHERE \(trashedPredicate)
+                ORDER BY title ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
         default:
             return []
         }
@@ -254,11 +452,17 @@ public struct LocalMetadataStoreReader: Sendable {
         case .mailAccounts, .mailMailboxes, .mailRecent:
             return home.appendingPathComponent("Library/Mail/V10/MailData/Envelope Index")
         case .booksCollections, .booksList:
-            return home.appendingPathComponent("Library/Containers/com.apple.iBooksX/Data/Documents/BKLibrary/BKLibrary.sqlite")
+            return firstExisting(
+                in: home.appendingPathComponent("Library/Containers/com.apple.iBooksX/Data/Documents/BKLibrary"),
+                matching: { $0.lastPathComponent.hasPrefix("BKLibrary-") && $0.pathExtension == "sqlite" }
+            ) ?? home.appendingPathComponent("Library/Containers/com.apple.iBooksX/Data/Documents/BKLibrary/BKLibrary.sqlite")
         case .healthSummary:
             return home.appendingPathComponent("Library/Health/healthdb_secure.sqlite")
         case .photosSharedAlbums, .photosSharedLibrary:
-            return home.appendingPathComponent("Pictures/Photos Library.photoslibrary/database/photos.sqlite")
+            return firstExisting(
+                in: home.appendingPathComponent("Pictures/Photos Library.photoslibrary/database"),
+                matching: { $0.lastPathComponent == "Photos.sqlite" }
+            ) ?? home.appendingPathComponent("Pictures/Photos Library.photoslibrary/database/Photos.sqlite")
         case .safariCloudTabsList:
             return home.appendingPathComponent("Library/Safari/CloudTabs.db")
         case .safariExtensionsList, .safariProfilesList:
@@ -721,6 +925,20 @@ private func coalesceRawExpression(candidates: [String], columns: Set<String>, t
     let prefix = tableAlias.map { "\($0)." } ?? ""
     let available = candidates.filter { columns.contains($0) }.map { "\(prefix)\($0)" }
     return "COALESCE(\((available + [fallback]).joined(separator: ", ")))"
+}
+
+private func firstExisting(in directory: URL, matching predicate: (URL) -> Bool) -> URL? {
+    guard let contents = try? FileManager.default.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: nil,
+        options: [.skipsHiddenFiles]
+    ) else {
+        return nil
+    }
+    return contents
+        .filter(predicate)
+        .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        .first
 }
 
 private func redactURL(_ raw: String) -> String {
