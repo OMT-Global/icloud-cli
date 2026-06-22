@@ -1242,7 +1242,7 @@ public struct CLIParser: Sendable {
             let token = tokens[index]
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
-            case "--store", "--metadata-store", "--calendar-store", "--findmy-store", "--mail-store", "--books-store", "--health-store", "--notes-store", "--photos-store", "--safari-store", "--music-store", "--weather-store", "--stocks-store", "--freeform-store", "--home-store", "--voice-memos-store":
+            case "--store", "--metadata-store", "--calendar-store", "--findmy-store", "--mail-store", "--books-store", "--health-store", "--notes-store", "--photos-store", "--reminders-store", "--safari-store", "--music-store", "--weather-store", "--stocks-store", "--freeform-store", "--home-store", "--voice-memos-store":
                 options.store = try parseURL(after: token, in: tokens, at: &index)
             case "--cache-file":
                 options.store = try parseURL(after: token, in: tokens, at: &index)
