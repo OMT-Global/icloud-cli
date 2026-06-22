@@ -183,6 +183,7 @@ public struct ICloudDriveInventoryReader: Sendable {
 
     private func status(for url: URL) -> ICloudFileStatus {
         let name = url.lastPathComponent
+        if name.hasPrefix(".broken") && name.hasSuffix(".icloud") { return .error }
         if name.hasPrefix(".") && name.hasSuffix(".icloud") { return .evicted }
         if name.hasSuffix(".icloud") { return .uploading }
         return .downloaded
