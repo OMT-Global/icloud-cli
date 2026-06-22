@@ -120,6 +120,37 @@ import Testing
     #expect(recent.first?.string("subject") == "Hello")
 }
 
+@Test func readsAppleCalendarEventKitShape() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "calendar-eventkit")
+    let database = root.appendingPathComponent("Calendar.sqlitedb")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE Store (ROWID INTEGER PRIMARY KEY, name TEXT, type INTEGER, disabled INTEGER, delegated_account_default_calendar_for_new_events_id INTEGER);
+    CREATE TABLE Calendar (ROWID INTEGER PRIMARY KEY, store_id INTEGER, title TEXT, flags INTEGER, color TEXT, type TEXT);
+    CREATE TABLE CalendarItem (ROWID INTEGER PRIMARY KEY, summary TEXT, calendar_id INTEGER, start_date REAL, end_date REAL, all_day INTEGER, hidden INTEGER, description TEXT);
+    CREATE TABLE Participant (ROWID INTEGER PRIMARY KEY, owner_id INTEGER, email TEXT, phone_number TEXT);
+    INSERT INTO Store VALUES (1, 'iCloud', 3, 0, 1);
+    INSERT INTO Calendar VALUES (1, 1, 'Work', 0, '#E6C800FF', 'com.apple.ical.sources.caldav');
+    INSERT INTO CalendarItem VALUES (1, 'Planning', 1, 788961600, 788965200, 0, 0, 'private');
+    INSERT INTO Participant VALUES (1, 1, 'teammate@example.com', NULL);
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let accounts = try reader.rows(for: .calendarAccounts)
+    #expect(accounts.first?.string("name") == "iCloud")
+    #expect(accounts.first?.int("calendarCount") == 1)
+
+    let calendars = try reader.rows(for: .calendarList)
+    #expect(calendars.first?.string("title") == "Work")
+    #expect(calendars.first?.int("isDefault") == 1)
+
+    let events = try reader.rows(for: .calendarEvents, options: MetadataOptions(calendar: "Work", since: "2026-01-01T00:00:00Z", includeAttendees: true, includeNotes: true))
+    #expect(events.first?.string("title") == "Planning")
+    #expect(events.first?.string("attendees") == "teammate@example.com")
+    #expect(events.first?.string("notes") == "private")
+}
+
 @Test func readsApplePhotosLibraryMetadataShape() throws {
     let root = try temporaryDirectoryForBroadIssues(named: "photos-coredata")
     let database = root.appendingPathComponent("Photos.sqlite")
@@ -237,6 +268,55 @@ import Testing
 
     let withURL = try reader.rows(for: .safariCloudTabsList, options: MetadataOptions(confirmSensitive: true, includeURLs: true))
     #expect(withURL.first?.string("url") == "https://example.com")
+}
+
+@Test func readsAppleRemindersMetadataShape() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "reminders-coredata")
+    let database = root.appendingPathComponent("Data-example.sqlite")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE ZREMCDBASELIST (
+        Z_PK INTEGER PRIMARY KEY,
+        ZMARKEDFORDELETION INTEGER,
+        ZNAME TEXT
+    );
+    CREATE TABLE ZREMCDREMINDER (
+        Z_PK INTEGER PRIMARY KEY,
+        ZMARKEDFORDELETION INTEGER,
+        ZCOMPLETED INTEGER,
+        ZFLAGGED INTEGER,
+        ZPRIORITY INTEGER,
+        ZLIST INTEGER,
+        ZTITLE TEXT,
+        ZNOTES TEXT,
+        ZDUEDATE REAL,
+        ZCREATIONDATE REAL
+    );
+    CREATE TABLE ZREMCDOBJECT (
+        Z_PK INTEGER PRIMARY KEY,
+        ZREMINDER INTEGER,
+        ZREMINDER1 INTEGER,
+        ZREMINDER2 INTEGER,
+        Z_FOK_REMINDER INTEGER,
+        ZASSIGNEE INTEGER
+    );
+    INSERT INTO ZREMCDBASELIST VALUES (1, 0, 'Work');
+    INSERT INTO ZREMCDREMINDER VALUES (1, 0, 0, 1, 5, 1, 'Ship PR', 'Review', 788961600, 788875200);
+    INSERT INTO ZREMCDOBJECT VALUES (1, 1, NULL, NULL, NULL, 7);
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let flagged = try reader.rows(for: .remindersFlagged, options: MetadataOptions(includeNotes: true))
+    #expect(flagged.first?.string("title") == "Ship PR")
+    #expect(flagged.first?.string("notes") == "Review")
+
+    let scheduled = try reader.rows(for: .remindersScheduled, options: MetadataOptions(since: "2026-01-01T00:00:00Z", until: "2027-01-01T00:00:00Z"))
+    #expect(scheduled.first?.string("notes") == nil)
+    #expect(scheduled.first?.int("isFlagged") == 1)
+
+    let assigned = try reader.rows(for: .remindersAssigned)
+    #expect(assigned.first?.int("assignedToMe") == 1)
 }
 
 @Test func reportsUnsupportedMusicStoreWhenNotSQLite() throws {

@@ -107,6 +107,21 @@ import Testing
     #expect(try reader.newsTopics().map(\.name) == ["Technology"])
 }
 
+@Test func readsAppleRemindersCoreDataSchema() throws {
+    let database = try appleRemindersFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let lists = try reader.reminderLists()
+    #expect(lists.first?.name == "Work")
+    #expect(lists.first?.itemCount == 1)
+
+    let reminders = try reader.reminders(list: "Work", dueBefore: "2027-01-01T00:00:00Z", dueAfter: nil, includeCompleted: false)
+    #expect(reminders.map(\.title) == ["Ship PR"])
+    #expect(reminders.first?.listName == "Work")
+    #expect(reminders.first?.isCompleted == false)
+}
+
 @Test func readsAppleMessagesChatDatabaseSchema() throws {
     let database = try appleMessagesFixtureDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
@@ -257,6 +272,34 @@ private func appleMessagesFixtureDatabase() throws -> URL {
     INSERT INTO message VALUES (1, 1, 771206400000000000, 0, 'private body');
     INSERT INTO chat_message_join VALUES (1, 1);
     INSERT INTO chat_handle_join VALUES (1, 1);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func appleRemindersFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-reminders")
+    let database = root.appendingPathComponent("Data-example.sqlite")
+    let sql = """
+    CREATE TABLE ZREMCDBASELIST (
+        Z_PK INTEGER PRIMARY KEY,
+        ZMARKEDFORDELETION INTEGER,
+        ZNAME TEXT
+    );
+    CREATE TABLE ZREMCDREMINDER (
+        Z_PK INTEGER PRIMARY KEY,
+        ZMARKEDFORDELETION INTEGER,
+        ZCOMPLETED INTEGER,
+        ZFLAGGED INTEGER,
+        ZPRIORITY INTEGER,
+        ZLIST INTEGER,
+        ZTITLE TEXT,
+        ZNOTES TEXT,
+        ZDUEDATE REAL,
+        ZCREATIONDATE REAL
+    );
+    INSERT INTO ZREMCDBASELIST VALUES (1, 0, 'Work');
+    INSERT INTO ZREMCDREMINDER VALUES (1, 0, 0, 1, 5, 1, 'Ship PR', 'Review', 788961600, 788875200);
     """
     try runSQLite(database: database, sql: sql)
     return database

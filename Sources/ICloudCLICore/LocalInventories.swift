@@ -310,10 +310,16 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func reminderLists() throws -> [ReminderListSummary] {
-        try query("SELECT listName AS name, COUNT(*) AS itemCount FROM reminders GROUP BY listName ORDER BY listName ASC;")
+        if try tableExists("ZREMCDREMINDER"), try tableExists("ZREMCDBASELIST") {
+            return try appleReminderLists()
+        }
+        return try query("SELECT listName AS name, COUNT(*) AS itemCount FROM reminders GROUP BY listName ORDER BY listName ASC;")
     }
 
     public func reminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool) throws -> [ReminderEntry] {
+        if try tableExists("ZREMCDREMINDER"), try tableExists("ZREMCDBASELIST") {
+            return try appleReminders(list: list, dueBefore: dueBefore, dueAfter: dueAfter, includeCompleted: includeCompleted)
+        }
         var filters: [String?] = [
             list.map { "listName = '\(sqlEscape($0))'" },
             dueBefore.map { "dueAt IS NOT NULL AND dueAt <= '\(sqlEscape($0))'" },
@@ -322,6 +328,49 @@ public struct LocalSQLiteInventoryReader: Sendable {
         if !includeCompleted { filters.append("isCompleted = 0") }
         let whereClause = andClause(filters)
         return try query("SELECT title, listName, dueAt, isCompleted, priority, notes, createdAt FROM reminders\(whereClause) ORDER BY dueAt ASC, createdAt ASC;")
+    }
+
+    private func appleReminderLists() throws -> [ReminderListSummary] {
+        try query("""
+            SELECT
+                COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) AS name,
+                COUNT(r.Z_PK) AS itemCount
+            FROM ZREMCDBASELIST l
+            LEFT JOIN ZREMCDREMINDER r ON r.ZLIST = l.Z_PK
+                AND COALESCE(r.ZMARKEDFORDELETION, 0) = 0
+            WHERE COALESCE(l.ZMARKEDFORDELETION, 0) = 0
+            GROUP BY l.Z_PK
+            ORDER BY name ASC;
+            """)
+    }
+
+    private func appleReminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool) throws -> [ReminderEntry] {
+        let dueExpression = appleDateExpression("r.ZDUEDATE")
+        let createdExpression = appleDateExpression("r.ZCREATIONDATE")
+        var filters: [String?] = [
+            "COALESCE(r.ZMARKEDFORDELETION, 0) = 0",
+            list.map { "COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) = '\(sqlEscape($0))'" },
+            dueBefore.map { "\(dueExpression) IS NOT NULL AND \(dueExpression) <= '\(sqlEscape($0))'" },
+            dueAfter.map { "\(dueExpression) IS NOT NULL AND \(dueExpression) >= '\(sqlEscape($0))'" },
+        ]
+        if !includeCompleted {
+            filters.append("COALESCE(r.ZCOMPLETED, 0) = 0")
+        }
+        let whereClause = andClause(filters)
+        return try query("""
+            SELECT
+                COALESCE(NULLIF(r.ZTITLE, ''), 'Reminder ' || r.Z_PK) AS title,
+                COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) AS listName,
+                \(dueExpression) AS dueAt,
+                COALESCE(r.ZCOMPLETED, 0) AS isCompleted,
+                COALESCE(r.ZPRIORITY, 0) AS priority,
+                r.ZNOTES AS notes,
+                \(createdExpression) AS createdAt
+            FROM ZREMCDREMINDER r
+            LEFT JOIN ZREMCDBASELIST l ON l.Z_PK = r.ZLIST
+            \(whereClause)
+            ORDER BY dueAt ASC, createdAt ASC;
+            """)
     }
 
     public func safariHistory(confirmSensitive: Bool, since: String?, until: String?, limit: Int, redactURLs: Bool) throws -> [SafariHistoryEntry] {
@@ -631,6 +680,42 @@ public struct AddressBookStoreResolver: Sendable {
             return FileManager.default.fileExists(atPath: database.path) ? database : nil
         }
         return candidates.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }.first ?? defaultDatabase
+    }
+}
+
+public struct AppleRemindersStoreResolver: Sendable {
+    public let storesDirectory: URL
+
+    public init(storesDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Group Containers/group.com.apple.reminders/Container_v1/Stores")) {
+        self.storesDirectory = storesDirectory
+    }
+
+    public func database() -> URL? {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: storesDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+        return contents
+            .filter { $0.lastPathComponent.hasPrefix("Data-") && $0.pathExtension == "sqlite" }
+            .sorted { lhs, rhs in
+                let lhsValues = try? lhs.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                let rhsValues = try? rhs.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                let lhsDate = lhsValues?.contentModificationDate ?? .distantPast
+                let rhsDate = rhsValues?.contentModificationDate ?? .distantPast
+                if lhsDate != rhsDate {
+                    return lhsDate > rhsDate
+                }
+                let lhsSize = lhsValues?.fileSize ?? 0
+                let rhsSize = rhsValues?.fileSize ?? 0
+                if lhsSize != rhsSize {
+                    return lhsSize > rhsSize
+                }
+                return lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+            }
+            .first
     }
 }
 
