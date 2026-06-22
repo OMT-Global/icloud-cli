@@ -198,7 +198,7 @@ public struct CommandRunner: Sendable {
             return rendered
         case .driveStatus:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.syncStatus(path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.syncStatus(path: options.path), format: options.format)
         case .driveErrors:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
             return try render(try reader.errorFiles(path: options.path, limit: options.limit), format: options.format)

@@ -21,6 +21,25 @@ private func mobileDocumentsFixtureURL() throws -> URL {
     #expect(files.count == 1)
 }
 
+@Test func countsDriveStatusAcrossAllFilesBeforeApplyingListLimits() throws {
+    let root = try temporaryDriveInventoryRoot(named: "status-counts")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let driveRoot = root.appendingPathComponent("Library/Mobile Documents")
+    try FileManager.default.createDirectory(at: driveRoot.appendingPathComponent("com~example~App"), withIntermediateDirectories: true)
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/one.txt"))
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/two.txt"))
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/.broken.txt.icloud"))
+
+    let reader = ICloudDriveInventoryReader(rootDirectory: driveRoot)
+    let summary = try reader.syncStatus(path: nil)
+    let errorFiles = try reader.errorFiles(path: nil, limit: 1)
+
+    #expect(summary.downloadedCount == 2)
+    #expect(summary.errorCount == 1)
+    #expect(errorFiles.count == 1)
+}
+
 @Test func scopesICloudDriveListToRelativePath() throws {
     let files = try ICloudDriveInventoryReader(rootDirectory: try mobileDocumentsFixtureURL()).listFiles(path: "com~example~Notes", depth: 1)
 
@@ -46,4 +65,13 @@ private func mobileDocumentsFixtureURL() throws -> URL {
     let containers = try ICloudDriveInventoryReader(rootDirectory: try mobileDocumentsFixtureURL()).listContainers(sortBy: .size)
 
     #expect(containers.contains { $0.bundleId == "com~apple~CloudDocs" && $0.sizeBytes != nil })
+}
+
+private func temporaryDriveInventoryRoot(named name: String) throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("icloud-cli-tests")
+        .appendingPathComponent(name)
+        .appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
 }
