@@ -326,12 +326,40 @@ public struct LocalSQLiteInventoryReader: Sendable {
 
     public func safariHistory(confirmSensitive: Bool, since: String?, until: String?, limit: Int, redactURLs: Bool) throws -> [SafariHistoryEntry] {
         guard confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli safari history") }
+        if try tableExists("history_items"), try tableExists("history_visits") {
+            return try appleSafariHistory(since: since, until: until, limit: limit, redactURLs: redactURLs)
+        }
         let floor = since ?? ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -86_400))
         let whereClause = andClause([
             "visitedAt >= '\(sqlEscape(floor))'",
             until.map { "visitedAt <= '\(sqlEscape($0))'" },
         ])
         let rows: [SafariHistoryEntry] = try query("SELECT url, title, visitedAt, visitCount FROM safari_history\(whereClause) ORDER BY visitedAt DESC LIMIT \(bounded(limit, defaultValue: 100, max: 1000));")
+        if !redactURLs { return rows }
+        return rows.map { SafariHistoryEntry(url: redactURL($0.url), title: $0.title, visitedAt: $0.visitedAt, visitCount: $0.visitCount) }
+    }
+
+    private func appleSafariHistory(since: String?, until: String?, limit: Int, redactURLs: Bool) throws -> [SafariHistoryEntry] {
+        let timestampExpression = "strftime('%Y-%m-%dT%H:%M:%SZ', v.visit_time + 978307200, 'unixepoch')"
+        let floor = since ?? ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -86_400))
+        let whereClause = andClause([
+            "i.url IS NOT NULL",
+            "v.load_successful = 1",
+            "\(timestampExpression) >= '\(sqlEscape(floor))'",
+            until.map { "\(timestampExpression) <= '\(sqlEscape($0))'" },
+        ])
+        let rows: [SafariHistoryEntry] = try query("""
+            SELECT
+                i.url AS url,
+                v.title AS title,
+                \(timestampExpression) AS visitedAt,
+                COALESCE(i.visit_count, 1) AS visitCount
+            FROM history_visits v
+            JOIN history_items i ON i.id = v.history_item
+            \(whereClause)
+            ORDER BY v.visit_time DESC
+            LIMIT \(bounded(limit, defaultValue: 100, max: 1000));
+            """)
         if !redactURLs { return rows }
         return rows.map { SafariHistoryEntry(url: redactURL($0.url), title: $0.title, visitedAt: $0.visitedAt, visitCount: $0.visitCount) }
     }
@@ -375,10 +403,10 @@ public struct LocalSQLiteInventoryReader: Sendable {
         let floorPredicate = appleFloor.map { "WHERE m.date >= \($0)" } ?? ""
         return try query("""
             SELECT
-                COALESCE(c.chat_identifier, c.guid) AS chatIdentifier,
+                COALESCE(c.chat_identifier, c.guid, h.id, 'unknown') AS chatIdentifier,
                 h.id AS sender,
                 CAST(m.date AS TEXT) AS sentAt,
-                m.is_from_me AS isFromMe,
+                COALESCE(m.is_from_me, 0) AS isFromMe,
                 \(appleBodyColumn)
             FROM message m
             LEFT JOIN handle h ON h.ROWID = m.handle_id

@@ -120,6 +120,125 @@ import Testing
     #expect(recent.first?.string("subject") == "Hello")
 }
 
+@Test func readsApplePhotosLibraryMetadataShape() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "photos-coredata")
+    let database = root.appendingPathComponent("Photos.sqlite")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE ZGENERICALBUM (
+        Z_PK INTEGER PRIMARY KEY,
+        ZCACHEDCOUNT INTEGER,
+        ZCACHEDPHOTOSCOUNT INTEGER,
+        ZTRASHEDSTATE INTEGER,
+        ZCLOUDGUID TEXT,
+        ZTITLE TEXT,
+        ZCLOUDOWNERFULLNAME TEXT,
+        ZCLOUDMULTIPLECONTRIBUTORSENABLED INTEGER,
+        ZCLOUDLASTCONTRIBUTIONDATE REAL
+    );
+    CREATE TABLE ZSHARE (
+        Z_PK INTEGER PRIMARY KEY,
+        ZASSETCOUNT INTEGER,
+        ZCLOUDITEMCOUNT INTEGER,
+        ZPHOTOSCOUNT INTEGER,
+        ZSTATUS INTEGER,
+        ZSCOPETYPE INTEGER,
+        ZTRASHEDSTATE INTEGER,
+        ZTITLE TEXT,
+        ZSCOPEIDENTIFIER TEXT,
+        ZUUID TEXT
+    );
+    CREATE TABLE ZSHAREPARTICIPANT (Z_PK INTEGER PRIMARY KEY, ZSHARE INTEGER, Z66_SHARE INTEGER);
+    INSERT INTO ZGENERICALBUM VALUES (1, 10, 9, 0, 'album-guid', 'Trip', 'Operator', 1, 788961600);
+    INSERT INTO ZSHARE VALUES (1, 12, NULL, NULL, 1, 2, 0, 'Shared Library', 'scope', 'uuid');
+    INSERT INTO ZSHAREPARTICIPANT VALUES (1, 1, NULL);
+    INSERT INTO ZSHAREPARTICIPANT VALUES (2, NULL, 1);
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let albums = try reader.rows(for: .photosSharedAlbums)
+    #expect(albums.first?.string("title") == "Trip")
+    #expect(albums.first?.int("assetCount") == 10)
+
+    let library = try reader.rows(for: .photosSharedLibrary)
+    #expect(library.first?.string("title") == "Shared Library")
+    #expect(library.first?.int("participantCount") == 2)
+}
+
+@Test func readsAppleBooksVersionedLibraryShape() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "books-coredata")
+    let database = root.appendingPathComponent("BKLibrary-1-example.sqlite")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE ZBKCOLLECTION (Z_PK INTEGER PRIMARY KEY, ZDELETEDFLAG INTEGER, ZTITLE TEXT, ZCOLLECTIONID TEXT);
+    CREATE TABLE ZBKCOLLECTIONMEMBER (Z_PK INTEGER PRIMARY KEY, ZASSET INTEGER, ZCOLLECTION INTEGER);
+    CREATE TABLE ZBKLIBRARYASSET (
+        Z_PK INTEGER PRIMARY KEY,
+        ZISHIDDEN INTEGER,
+        ZTITLE TEXT,
+        ZASSETID TEXT,
+        ZAUTHOR TEXT,
+        ZKIND TEXT,
+        ZREADINGPROGRESS REAL
+    );
+    INSERT INTO ZBKCOLLECTION VALUES (1, 0, 'Reading', 'collection-1');
+    INSERT INTO ZBKLIBRARYASSET VALUES (1, 0, 'Example Book', 'asset-1', 'Example Author', 'epub', 0.5);
+    INSERT INTO ZBKCOLLECTIONMEMBER VALUES (1, 1, 1);
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let collections = try reader.rows(for: .booksCollections)
+    #expect(collections.first?.string("name") == "Reading")
+    #expect(collections.first?.int("bookCount") == 1)
+
+    let books = try reader.rows(for: .booksList, options: MetadataOptions(collection: "Reading", includeHighlights: true))
+    #expect(books.first?.string("title") == "Example Book")
+    #expect(books.first?.int("progressPercent") == 50)
+}
+
+@Test func readsAppleNotesMetadataShape() throws {
+    let database = try appleNotesMetadataDatabaseForBroadIssues()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let accounts = try reader.rows(for: .notesAccounts)
+    #expect(accounts.first?.string("name") == "iCloud")
+    #expect(accounts.first?.int("noteCount") == 1)
+
+    let folders = try reader.rows(for: .notesFolders, options: MetadataOptions(account: "iCloud"))
+    #expect(folders.first?.string("name") == "Quick Notes")
+    #expect(folders.first?.int("noteCount") == 1)
+
+    #expect(try reader.rows(for: .notesTags).isEmpty)
+
+    let shared = try reader.rows(for: .notesShared)
+    #expect(shared.first?.string("title") == "Shared Plan")
+    #expect(shared.first?.int("noteCount") == 1)
+}
+
+@Test func readsAppleCloudTabsShapeWithoutUrlsByDefault() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "cloud-tabs-real")
+    let database = root.appendingPathComponent("CloudTabs.db")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE cloud_tab_devices (device_uuid TEXT PRIMARY KEY, system_fields BLOB, device_name TEXT, has_duplicate_device_name INTEGER, is_ephemeral_device INTEGER, last_modified TEXT);
+    CREATE TABLE cloud_tabs (tab_uuid TEXT PRIMARY KEY, system_fields BLOB, device_uuid TEXT, position INTEGER, title TEXT, url TEXT, is_showing_reader INTEGER, is_pinned INTEGER, reader_scroll_position_page_index INTEGER, scene_id TEXT);
+    INSERT INTO cloud_tab_devices VALUES ('device-1', X'00', 'Example iPhone', 0, 0, '2026-05-10T09:00:00Z');
+    INSERT INTO cloud_tabs VALUES ('tab-1', X'01', 'device-1', 1, 'Example Page', 'https://example.com/private/path', 0, 0, NULL, 'scene-1');
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let redacted = try reader.rows(for: .safariCloudTabsList, options: MetadataOptions(confirmSensitive: true))
+    #expect(redacted.first?.string("title") == "Example Page")
+    #expect(redacted.first?.string("url") == nil)
+
+    let withURL = try reader.rows(for: .safariCloudTabsList, options: MetadataOptions(confirmSensitive: true, includeURLs: true))
+    #expect(withURL.first?.string("url") == "https://example.com")
+}
+
 @Test func reportsUnsupportedMusicStoreWhenNotSQLite() throws {
     let root = try temporaryDirectoryForBroadIssues(named: "music-nonsqlite")
     let database = root.appendingPathComponent("Library.musicdb")
@@ -336,6 +455,29 @@ private func syntheticBroadInventoryDatabase() throws -> URL {
     INSERT INTO notes_shared VALUES ('Shared Plan', 'owner', 2);
     CREATE TABLE reminders (title TEXT, listName TEXT, dueAt TEXT, isCompleted INTEGER, priority INTEGER, notes TEXT, isFlagged INTEGER, assignedToMe INTEGER);
     INSERT INTO reminders VALUES ('Ship PR', 'Work', '2026-05-16T12:00:00Z', 0, 5, 'Review', 1, 1);
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    return database
+}
+
+private func appleNotesMetadataDatabaseForBroadIssues() throws -> URL {
+    let root = try temporaryDirectoryForBroadIssues(named: "notes-coredata")
+    let database = root.appendingPathComponent("NoteStore.sqlite")
+    let sql = """
+    CREATE TABLE ZICCLOUDSYNCINGOBJECT (
+        Z_PK INTEGER PRIMARY KEY,
+        ZTITLE1 TEXT,
+        ZTITLE2 TEXT,
+        ZNAME TEXT,
+        ZFOLDER INTEGER,
+        ZMARKEDFORDELETION INTEGER,
+        ZISSHAREDIRTY INTEGER,
+        ZACCOUNTNAMEFORACCOUNTLISTSORTING TEXT
+    );
+    CREATE TABLE ZICINVITATION (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZNOTECOUNT INTEGER, ZSHAREURL TEXT);
+    INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (1, NULL, 'Quick Notes', NULL, NULL, 0, 0, 'iCloud');
+    INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (2, 'Plan', NULL, NULL, 1, 0, 0, 'iCloud');
+    INSERT INTO ZICINVITATION VALUES (1, 'Shared Plan', 1, 'https://example.com/share');
     """
     try runSQLiteForBroadIssues(database: database, sql: sql)
     return database

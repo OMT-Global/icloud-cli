@@ -128,6 +128,47 @@ import Testing
     #expect(recent.first?.body == nil)
 }
 
+@Test func readsAppleMessagesRecentWithoutChatJoin() throws {
+    let root = try temporaryDirectory(named: "apple-messages-direct")
+    let database = root.appendingPathComponent("chat.db")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE message (ROWID INTEGER PRIMARY KEY, handle_id INTEGER, date INTEGER, is_from_me INTEGER, text TEXT);
+    CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
+    CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, display_name TEXT);
+    CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+    INSERT INTO handle VALUES (1, 'alice@example.com');
+    INSERT INTO message VALUES (1, 1, 771206400000000000, NULL, 'private body');
+    """
+    try runSQLite(database: database, sql: sql)
+
+    let recent = try LocalSQLiteInventoryReader(database: database).recentMessages(confirmSensitive: true, includeBody: false, since: nil, limit: 10)
+
+    #expect(recent.map(\.chatIdentifier) == ["alice@example.com"])
+    #expect(recent.first?.isFromMe == false)
+    #expect(recent.first?.body == nil)
+}
+
+@Test func readsAppleSafariHistorySchema() throws {
+    let root = try temporaryDirectory(named: "apple-safari-history")
+    let database = root.appendingPathComponent("History.db")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE history_items (id INTEGER PRIMARY KEY, url TEXT, visit_count INTEGER);
+    CREATE TABLE history_visits (id INTEGER PRIMARY KEY, history_item INTEGER, visit_time REAL, title TEXT, load_successful INTEGER);
+    INSERT INTO history_items VALUES (1, 'https://example.com/private/path', 3);
+    INSERT INTO history_visits VALUES (1, 1, 788961600, 'Example', 1);
+    """
+    try runSQLite(database: database, sql: sql)
+
+    let history = try LocalSQLiteInventoryReader(database: database).safariHistory(confirmSensitive: true, since: "2026-01-01T00:00:00Z", until: nil, limit: 10, redactURLs: true)
+
+    #expect(history.map(\.url) == ["https://example.com"])
+    #expect(history.first?.title == "Example")
+    #expect(history.first?.visitedAt == "2026-01-01T12:00:00Z")
+    #expect(history.first?.visitCount == 3)
+}
+
 @Test func limitsMessageConversations() throws {
     let database = try messageConversationsFixtureDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
