@@ -9,8 +9,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  ci-gate:
+  pr-ci-gate:
     name: CI Gate
+    if: github.event_name == 'pull_request'
+    runs-on:
+      - macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Xcode
+        run: xcodebuild -version
+
+      - name: Fast checks
+        run: bash scripts/ci/run-fast-checks.sh
+
+  trusted-ci-gate:
+    name: CI Gate
+    if: github.event_name != 'pull_request'
     runs-on:
       - self-hosted
       - macOS

@@ -49,6 +49,7 @@ fi
 
 if [[ -f "$workflow" ]]; then
   require_line "$workflow" "    types: [opened, synchronize, reopened, ready_for_review, edited]"
+  require_line "$workflow" "      - macos-15"
   require_contains "$workflow" "bash scripts/ci/run-fast-checks.sh"
 fi
 
