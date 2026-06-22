@@ -319,6 +319,74 @@ import Testing
     #expect(assigned.first?.int("assignedToMe") == 1)
 }
 
+@Test func readsAppleHomeKitCoreShape() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "homekit-core")
+    let database = root.appendingPathComponent("core.sqlite")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE ZMKFHOME (
+        Z_PK INTEGER PRIMARY KEY,
+        ZNAME TEXT,
+        ZOWNED INTEGER
+    );
+    CREATE TABLE ZMKFROOM (
+        Z_PK INTEGER PRIMARY KEY,
+        ZHOME INTEGER,
+        ZNAME TEXT
+    );
+    CREATE TABLE ZMKFACCESSORY (
+        Z_PK INTEGER PRIMARY KEY,
+        ZHOME INTEGER,
+        ZROOM INTEGER,
+        ZCONFIGUREDNAME TEXT,
+        ZPROVIDEDNAME TEXT,
+        ZMANUFACTURER TEXT,
+        ZMODEL TEXT,
+        ZACCESSORYCATEGORY INTEGER,
+        ZHOSTACCESSORY INTEGER
+    );
+    CREATE TABLE ZMKFACTIONSET (
+        Z_PK INTEGER PRIMARY KEY,
+        ZHOME INTEGER,
+        ZNAME TEXT
+    );
+    INSERT INTO ZMKFHOME VALUES (1, 'House', 1);
+    INSERT INTO ZMKFROOM VALUES (1, 1, 'Office');
+    INSERT INTO ZMKFACCESSORY VALUES (1, 1, 1, 'Lamp', 'Provided Lamp', 'Example', 'A1', 5, NULL);
+    INSERT INTO ZMKFACTIONSET VALUES (1, 1, 'Work');
+    """
+    try runSQLiteForBroadIssues(database: database, sql: sql)
+    let reader = LocalMetadataStoreReader(database: database)
+
+    let homes = try reader.rows(for: .homeHomes)
+    #expect(homes.first?.string("name") == "House")
+    #expect(homes.first?.int("primaryFlag") == 1)
+
+    let rooms = try reader.rows(for: .homeRooms, options: MetadataOptions(home: "House"))
+    #expect(rooms.first?.string("name") == "Office")
+    #expect(rooms.first?.int("accessoryCount") == 1)
+
+    let accessories = try reader.rows(for: .homeAccessories, options: MetadataOptions(home: "House", room: "Office"))
+    #expect(accessories.first?.string("name") == "Lamp")
+    #expect(accessories.first?.string("manufacturer") == "Example")
+
+    let scenes = try reader.rows(for: .homeScenes, options: MetadataOptions(home: "House"))
+    #expect(scenes.first?.string("name") == "Work")
+}
+
+@Test func finderTagsResolverFallsBackToPreferencesStore() throws {
+    let root = try temporaryDirectoryForBroadIssues(named: "finder-tags-resolver")
+    let synced = root.appendingPathComponent("SyncedPreferences/com.apple.finder.plist")
+    let preferences = root.appendingPathComponent("Preferences/com.apple.finder.plist")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: preferences.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: preferences)
+
+    let resolved = FinderTagsStoreResolver(syncedFile: synced, preferencesFile: preferences).resolvedPreferencesFile()
+
+    #expect(resolved.path == preferences.path)
+}
+
 @Test func reportsUnsupportedMusicStoreWhenNotSQLite() throws {
     let root = try temporaryDirectoryForBroadIssues(named: "music-nonsqlite")
     let database = root.appendingPathComponent("Library.musicdb")

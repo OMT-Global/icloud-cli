@@ -100,6 +100,9 @@ public struct LocalMetadataStoreReader: Sendable {
         if command == .remindersAssigned || command == .remindersFlagged || command == .remindersScheduled || command == .remindersToday {
             return try reminderRows(for: command, options: options)
         }
+        if command == .homeAccessories || command == .homeHomes || command == .homeRooms || command == .homeScenes {
+            return try homeRows(for: command, options: options)
+        }
         if command == .musicStatus || command == .musicPlaylists || command == .musicTracks {
             try validateSQLiteStore(featureName: "Music library")
         }
@@ -500,6 +503,95 @@ public struct LocalMetadataStoreReader: Sendable {
             .map { redact(row: $0, command: command, options: options) }
     }
 
+    private func homeRows(for command: MetadataCommand, options: MetadataOptions) throws -> [MetadataRow] {
+        if try tableExists(command.tableName ?? "") {
+            guard let tableName = command.tableName else { return [] }
+            return try query("SELECT * FROM \(tableName)\(whereClause(for: command, options: options))\(orderClause(for: command)) LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));")
+                .map { MetadataRow(kind: command.displayName, fields: $0) }
+        }
+        guard try tableExists("ZMKFHOME") else {
+            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing home metadata table or Apple HomeKit CoreData tables")
+        }
+        switch command {
+        case .homeHomes:
+            let accessoryCount = try tableExists("ZMKFACCESSORY") ? """
+                (SELECT COUNT(*)
+                 FROM ZMKFACCESSORY a
+                 WHERE a.ZHOME = h.Z_PK)
+                """ : "0"
+            return try query("""
+                SELECT
+                    COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) AS name,
+                    COALESCE(h.ZOWNED, 0) AS primaryFlag,
+                    \(accessoryCount) AS accessoryCount
+                FROM ZMKFHOME h
+                ORDER BY primaryFlag DESC, name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .homeRooms:
+            guard try tableExists("ZMKFROOM") else { return [] }
+            let accessoryCount = try tableExists("ZMKFACCESSORY") ? """
+                (SELECT COUNT(*)
+                 FROM ZMKFACCESSORY a
+                 WHERE a.ZROOM = r.Z_PK)
+                """ : "0"
+            let filters = andClause([
+                options.home.map { "COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) = '\(sqlEscape($0))'" },
+            ])
+            return try query("""
+                SELECT
+                    COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) AS home,
+                    COALESCE(NULLIF(r.ZNAME, ''), 'Room ' || r.Z_PK) AS name,
+                    \(accessoryCount) AS accessoryCount
+                FROM ZMKFROOM r
+                LEFT JOIN ZMKFHOME h ON h.Z_PK = r.ZHOME
+                \(filters)
+                ORDER BY home ASC, name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .homeAccessories:
+            guard try tableExists("ZMKFACCESSORY") else { return [] }
+            let filters = andClause([
+                options.home.map { "COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) = '\(sqlEscape($0))'" },
+                options.room.map { "COALESCE(NULLIF(r.ZNAME, ''), 'Room ' || r.Z_PK) = '\(sqlEscape($0))'" },
+            ])
+            return try query("""
+                SELECT
+                    COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) AS home,
+                    COALESCE(NULLIF(r.ZNAME, ''), 'Room ' || r.Z_PK) AS room,
+                    COALESCE(NULLIF(a.ZCONFIGUREDNAME, ''), NULLIF(a.ZPROVIDEDNAME, ''), 'Accessory ' || a.Z_PK) AS name,
+                    a.ZMANUFACTURER AS manufacturer,
+                    a.ZMODEL AS model,
+                    CAST(a.ZACCESSORYCATEGORY AS TEXT) AS category,
+                    CASE WHEN a.ZHOSTACCESSORY IS NULL THEN 0 ELSE 1 END AS bridged
+                FROM ZMKFACCESSORY a
+                LEFT JOIN ZMKFHOME h ON h.Z_PK = a.ZHOME
+                LEFT JOIN ZMKFROOM r ON r.Z_PK = a.ZROOM
+                \(filters)
+                ORDER BY home ASC, room ASC, name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        case .homeScenes:
+            guard try tableExists("ZMKFACTIONSET") else { return [] }
+            let filters = andClause([
+                options.home.map { "COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) = '\(sqlEscape($0))'" },
+            ])
+            return try query("""
+                SELECT
+                    COALESCE(NULLIF(h.ZNAME, ''), 'Home ' || h.Z_PK) AS home,
+                    COALESCE(NULLIF(s.ZNAME, ''), 'Scene ' || s.Z_PK) AS name,
+                    0 AS accessoryCount
+                FROM ZMKFACTIONSET s
+                LEFT JOIN ZMKFHOME h ON h.Z_PK = s.ZHOME
+                \(filters)
+                ORDER BY home ASC, name ASC
+                LIMIT \(bounded(options.limit, defaultValue: 50, max: 1000));
+                """).map { MetadataRow(kind: command.displayName, fields: $0) }
+        default:
+            return []
+        }
+    }
+
     private func appleMailAccounts(options: MetadataOptions) throws -> [MetadataRow] {
         guard try tableExists("mailboxes") else {
             throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing Apple Mail mailboxes table")
@@ -634,7 +726,10 @@ public struct LocalMetadataStoreReader: Sendable {
         case .freeformList:
             return home.appendingPathComponent("Library/Containers/com.apple.freeform/Data/Library/Application Support/freeform.sqlite")
         case .homeAccessories, .homeHomes, .homeRooms, .homeScenes:
-            return home.appendingPathComponent("Library/Application Support/com.apple.homed/Home.sqlite")
+            return firstExisting(
+                in: home.appendingPathComponent("Library/HomeKit"),
+                matching: { $0.lastPathComponent == "core.sqlite" }
+            ) ?? home.appendingPathComponent("Library/Application Support/com.apple.homed/Home.sqlite")
         case .voiceMemosList:
             return home.appendingPathComponent("Library/Application Support/com.apple.voicememos/Recordings.db")
         case .notesAccounts, .notesFolders, .notesShared, .notesTags:
@@ -1032,6 +1127,26 @@ public struct TaggedDriveItem: Codable, Equatable, Sendable {
     public let path: String
     public let modifiedAt: Date?
     public let iCloudStatus: ICloudFileStatus
+}
+
+public struct FinderTagsStoreResolver: Sendable {
+    public let syncedFile: URL
+    public let preferencesFile: URL
+
+    public init(
+        syncedFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/SyncedPreferences/com.apple.finder.plist"),
+        preferencesFile: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/com.apple.finder.plist")
+    ) {
+        self.syncedFile = syncedFile
+        self.preferencesFile = preferencesFile
+    }
+
+    public func resolvedPreferencesFile() -> URL {
+        if FileManager.default.fileExists(atPath: syncedFile.path) {
+            return syncedFile
+        }
+        return preferencesFile
+    }
 }
 
 public struct FinderTagsReader: Sendable {
