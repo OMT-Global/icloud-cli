@@ -122,6 +122,20 @@ import Testing
     #expect(reminders.first?.isCompleted == false)
 }
 
+@Test func readsAppleMapsCoreDataSchema() throws {
+    let database = try appleMapsFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let favorites = try reader.mapFavorites()
+    #expect(favorites.first?.name == "Home")
+    #expect(favorites.first?.address == "1 Example Way")
+
+    let recents = try reader.mapRecents(limit: 1)
+    #expect(recents.map(\.name) == ["Coffee"])
+    #expect(recents.first?.searchedAt == "2026-01-01T12:00:00Z")
+}
+
 @Test func readsAppleMessagesChatDatabaseSchema() throws {
     let database = try appleMessagesFixtureDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
@@ -300,6 +314,38 @@ private func appleRemindersFixtureDatabase() throws -> URL {
     );
     INSERT INTO ZREMCDBASELIST VALUES (1, 0, 'Work');
     INSERT INTO ZREMCDREMINDER VALUES (1, 0, 0, 1, 5, 1, 'Ship PR', 'Review', 788961600, 788875200);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func appleMapsFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-maps")
+    let database = root.appendingPathComponent("MapsSync_0.0.1")
+    let sql = """
+    CREATE TABLE ZFAVORITEITEM (
+        Z_PK INTEGER PRIMARY KEY,
+        ZHIDDEN INTEGER,
+        ZPOSITIONINDEX INTEGER,
+        ZLATITUDE REAL,
+        ZLONGITUDE REAL,
+        ZCUSTOMNAME TEXT,
+        ZMAPITEMNAME TEXT,
+        ZMAPITEMADDRESS TEXT,
+        ZMAPITEMCATEGORY TEXT
+    );
+    CREATE TABLE ZHISTORYITEM (
+        Z_PK INTEGER PRIMARY KEY,
+        ZPOSITIONINDEX INTEGER,
+        ZLATITUDE REAL,
+        ZLONGITUDE REAL,
+        ZCUSTOMNAME TEXT,
+        ZLOCATIONDISPLAY TEXT,
+        ZQUERY TEXT,
+        ZMODIFICATIONTIME REAL
+    );
+    INSERT INTO ZFAVORITEITEM VALUES (1, 0, 1, 1.0, 2.0, 'Home', 'Example Home', '1 Example Way', 'home');
+    INSERT INTO ZHISTORYITEM VALUES (1, 1, 3.0, 4.0, 'Coffee', '2 Example Way', 'coffee', 788961600);
     """
     try runSQLite(database: database, sql: sql)
     return database

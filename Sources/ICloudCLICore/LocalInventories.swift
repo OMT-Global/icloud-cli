@@ -554,12 +554,51 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func mapFavorites() throws -> [MapPlace] {
+        if try tableExists("ZFAVORITEITEM") {
+            return try appleMapFavorites()
+        }
         let rows: [RawMapPlace] = try query("SELECT name, address, latitude, longitude, category, NULL AS searchedAt FROM map_favorites ORDER BY name ASC;")
         return rows.map { $0.place() }
     }
 
     public func mapRecents(limit: Int) throws -> [MapPlace] {
+        if try tableExists("ZHISTORYITEM") {
+            return try appleMapRecents(limit: limit)
+        }
         let rows: [RawMapPlace] = try query("SELECT name, address, latitude, longitude, category, searchedAt FROM map_recents ORDER BY searchedAt DESC LIMIT \(bounded(limit, defaultValue: 20, max: 1000));")
+        return rows.map { $0.place() }
+    }
+
+    private func appleMapFavorites() throws -> [MapPlace] {
+        let rows: [RawMapPlace] = try query("""
+            SELECT
+                COALESCE(NULLIF(ZCUSTOMNAME, ''), NULLIF(ZMAPITEMNAME, ''), NULLIF(ZMAPITEMADDRESS, ''), 'Favorite ' || Z_PK) AS name,
+                ZMAPITEMADDRESS AS address,
+                ZLATITUDE AS latitude,
+                ZLONGITUDE AS longitude,
+                ZMAPITEMCATEGORY AS category,
+                NULL AS searchedAt
+            FROM ZFAVORITEITEM
+            WHERE COALESCE(ZHIDDEN, 0) = 0
+            ORDER BY COALESCE(ZPOSITIONINDEX, Z_PK) ASC;
+            """)
+        return rows.map { $0.place() }
+    }
+
+    private func appleMapRecents(limit: Int) throws -> [MapPlace] {
+        let searchedAt = appleDateExpression("ZMODIFICATIONTIME")
+        let rows: [RawMapPlace] = try query("""
+            SELECT
+                COALESCE(NULLIF(ZCUSTOMNAME, ''), NULLIF(ZLOCATIONDISPLAY, ''), NULLIF(ZQUERY, ''), 'Recent Place ' || Z_PK) AS name,
+                ZLOCATIONDISPLAY AS address,
+                ZLATITUDE AS latitude,
+                ZLONGITUDE AS longitude,
+                NULL AS category,
+                \(searchedAt) AS searchedAt
+            FROM ZHISTORYITEM
+            ORDER BY ZMODIFICATIONTIME DESC
+            LIMIT \(bounded(limit, defaultValue: 20, max: 1000));
+            """)
         return rows.map { $0.place() }
     }
 
@@ -716,6 +755,22 @@ public struct AppleRemindersStoreResolver: Sendable {
                 return lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
             }
             .first
+    }
+}
+
+public struct AppleMapsStoreResolver: Sendable {
+    public let mapsDirectory: URL
+
+    public init(mapsDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Maps")) {
+        self.mapsDirectory = mapsDirectory
+    }
+
+    public func database() -> URL? {
+        let candidates = [
+            mapsDirectory.appendingPathComponent("MapsSync_0.0.1"),
+            mapsDirectory.appendingPathComponent("MapsSync_0.0.1_deviceLocalCache.db"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
 
