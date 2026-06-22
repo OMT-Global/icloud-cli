@@ -88,8 +88,8 @@ public struct ICloudDriveInventoryReader: Sendable {
         return result.sorted { lhs, rhs in lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending }
     }
 
-    public func syncStatus(path requestedPath: String? = nil) throws -> ICloudDriveSyncSummary {
-        let files = try listFiles(path: requestedPath, depth: Int.max)
+    public func syncStatus(path requestedPath: String? = nil, limit: Int? = nil) throws -> ICloudDriveSyncSummary {
+        let files = try listFiles(path: requestedPath, depth: Int.max, limit: limit)
         return ICloudDriveSyncSummary(
             downloadedCount: files.filter { $0.iCloudStatus == .downloaded }.count,
             cloudOnlyCount: files.filter { $0.iCloudStatus == .evicted || $0.iCloudStatus == .notDownloaded }.count,

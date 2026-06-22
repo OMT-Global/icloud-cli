@@ -197,7 +197,7 @@ public struct RemindersListOptions: Equatable, Sendable {
     public var dueAfter: String?
     public var includeCompleted: Bool
 
-    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false) {
+    public init(format: OutputFormat = .json, store: URL = AppleRemindersStoreResolver().database() ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false) {
         self.format = format
         self.store = store
         self.list = list
