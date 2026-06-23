@@ -10,7 +10,7 @@ on:
 
 jobs:
   pr-ci-gate:
-    name: CI Gate
+    name: PR Checks
     if: github.event_name == 'pull_request'
     runs-on:
       - macos-15
@@ -25,7 +25,7 @@ jobs:
         run: bash scripts/ci/run-fast-checks.sh
 
   trusted-ci-gate:
-    name: CI Gate
+    name: Trusted Checks
     if: github.event_name != 'pull_request'
     runs-on:
       - self-hosted
@@ -43,3 +43,20 @@ jobs:
 
       - name: Fast checks
         run: bash scripts/ci/run-fast-checks.sh
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - pr-ci-gate
+      - trusted-ci-gate
+    runs-on:
+      - ubuntu-latest
+    steps:
+      - name: Require event-specific checks
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            [[ "${{ needs.pr-ci-gate.result }}" == "success" ]]
+          else
+            [[ "${{ needs.trusted-ci-gate.result }}" == "success" ]]
+          fi

@@ -32,6 +32,36 @@ require_contains() {
   fi
 }
 
+job_block() {
+  local file="$1"
+  local job="$2"
+  awk -v job="  ${job}:" '
+    $0 == job { in_job = 1; print; next }
+    in_job && $0 ~ /^  [A-Za-z0-9_-]+:/ { exit }
+    in_job { print }
+  ' "$file"
+}
+
+require_job_line() {
+  local file="$1"
+  local job="$2"
+  local expected="$3"
+  if ! job_block "$file" "$job" | grep -F -x "$expected" >/dev/null 2>&1; then
+    echo "CI policy missing exact line in $workflow job $job: $expected" >&2
+    failed=1
+  fi
+}
+
+reject_job_contains() {
+  local file="$1"
+  local job="$2"
+  local rejected="$3"
+  if job_block "$file" "$job" | grep -F "$rejected" >/dev/null 2>&1; then
+    echo "CI policy rejected text in $workflow job $job: $rejected" >&2
+    failed=1
+  fi
+}
+
 require_file "$fast_script"
 require_file "$workflow"
 
@@ -49,7 +79,12 @@ fi
 
 if [[ -f "$workflow" ]]; then
   require_line "$workflow" "    types: [opened, synchronize, reopened, ready_for_review, edited]"
-  require_line "$workflow" "      - macos-15"
+  require_job_line "$workflow" "pr-ci-gate" "    name: PR Checks"
+  require_job_line "$workflow" "pr-ci-gate" "    if: github.event_name == 'pull_request'"
+  require_job_line "$workflow" "pr-ci-gate" "      - macos-15"
+  reject_job_contains "$workflow" "pr-ci-gate" "self-hosted"
+  require_job_line "$workflow" "ci-gate" "    name: CI Gate"
+  require_job_line "$workflow" "ci-gate" "    if: always()"
   require_contains "$workflow" "bash scripts/ci/run-fast-checks.sh"
 fi
 
