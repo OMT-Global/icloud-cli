@@ -101,10 +101,12 @@ public struct ICloudDriveInventoryReader: Sendable {
         )
     }
 
-    public func errorFiles(path requestedPath: String? = nil, limit: Int = 500) throws -> [ICloudDriveErrorEntry] {
-        try listFiles(path: requestedPath, depth: Int.max)
+    public func errorFiles(path requestedPath: String? = nil, limit: Int = 500, scanLimit: Int? = nil) throws -> [ICloudDriveErrorEntry] {
+        let resultLimit = max(1, limit)
+        let traversalLimit = scanLimit ?? filteredDriveScanLimit(for: resultLimit)
+        return try listFiles(path: requestedPath, depth: Int.max, limit: traversalLimit)
             .filter { $0.iCloudStatus == .error }
-            .prefix(max(1, limit))
+            .prefix(resultLimit)
             .map { ICloudDriveErrorEntry(path: $0.path, category: "icloud-sync-error") }
     }
 
@@ -121,10 +123,12 @@ public struct ICloudDriveInventoryReader: Sendable {
             .map { $0 }
     }
 
-    public func sharedItems(path requestedPath: String? = nil, limit: Int = 500) throws -> [ICloudDriveSharedItem] {
-        try listFiles(path: requestedPath, depth: Int.max)
+    public func sharedItems(path requestedPath: String? = nil, limit: Int = 500, scanLimit: Int? = nil) throws -> [ICloudDriveSharedItem] {
+        let resultLimit = max(1, limit)
+        let traversalLimit = scanLimit ?? filteredDriveScanLimit(for: resultLimit)
+        return try listFiles(path: requestedPath, depth: Int.max, limit: traversalLimit)
             .filter { $0.path.localizedCaseInsensitiveContains(".shared") }
-            .prefix(max(1, limit))
+            .prefix(resultLimit)
             .map { file in
                 ICloudDriveSharedItem(path: file.path, owner: nil, role: nil, dateShared: file.modifiedAt, iCloudStatus: file.iCloudStatus)
             }
@@ -151,6 +155,10 @@ public struct ICloudDriveInventoryReader: Sendable {
         let standardized = url.standardizedFileURL
         guard standardized.path == rootDirectory.path || standardized.path.hasPrefix(rootDirectory.path + "/") else { throw DriveInventoryError.invalidPath(standardized.path) }
         return standardized
+    }
+
+    private func filteredDriveScanLimit(for resultLimit: Int) -> Int {
+        max(200, bounded(resultLimit, defaultValue: 500, max: 2_000) * 5)
     }
 
     private func walkFiles(at directory: URL, currentDepth: Int, maxDepth: Int, maxFiles: Int?, into result: inout [ICloudDriveFile]) throws {

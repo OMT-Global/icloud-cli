@@ -40,6 +40,42 @@ private func mobileDocumentsFixtureURL() throws -> URL {
     #expect(errorFiles.count == 1)
 }
 
+@Test func driveErrorResultsKeepResultLimitSeparateFromScanLimit() throws {
+    let root = try temporaryDriveInventoryRoot(named: "error-scan-limit")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let driveRoot = root.appendingPathComponent("Library/Mobile Documents")
+    try FileManager.default.createDirectory(at: driveRoot.appendingPathComponent("com~example~App"), withIntermediateDirectories: true)
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/.broken-one.txt.icloud"))
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/.broken-two.txt.icloud"))
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/.broken-three.txt.icloud"))
+
+    let reader = ICloudDriveInventoryReader(rootDirectory: driveRoot)
+    let scannedErrorFiles = try reader.errorFiles(path: nil, limit: 10, scanLimit: 2)
+    let cappedErrorFiles = try reader.errorFiles(path: nil, limit: 1, scanLimit: 3)
+
+    #expect(scannedErrorFiles.count == 2)
+    #expect(cappedErrorFiles.count == 1)
+}
+
+@Test func driveSharedResultsUseBoundedTraversalBeforeFiltering() throws {
+    let root = try temporaryDriveInventoryRoot(named: "shared-scan-limit")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let driveRoot = root.appendingPathComponent("Library/Mobile Documents")
+    try FileManager.default.createDirectory(at: driveRoot.appendingPathComponent("com~example~App"), withIntermediateDirectories: true)
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/alpha.shared.txt"))
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/beta.shared.txt"))
+    try Data("ok".utf8).write(to: driveRoot.appendingPathComponent("com~example~App/gamma.shared.txt"))
+
+    let reader = ICloudDriveInventoryReader(rootDirectory: driveRoot)
+    let scannedSharedItems = try reader.sharedItems(path: nil, limit: 10, scanLimit: 2)
+    let cappedSharedItems = try reader.sharedItems(path: nil, limit: 1, scanLimit: 3)
+
+    #expect(scannedSharedItems.count == 2)
+    #expect(cappedSharedItems.count == 1)
+}
+
 @Test func scopesICloudDriveListToRelativePath() throws {
     let files = try ICloudDriveInventoryReader(rootDirectory: try mobileDocumentsFixtureURL()).listFiles(path: "com~example~Notes", depth: 1)
 
