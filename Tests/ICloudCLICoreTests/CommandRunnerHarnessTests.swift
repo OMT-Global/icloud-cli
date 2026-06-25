@@ -131,6 +131,28 @@ import Testing
     #expect(sink.output.last?.contains("Unsupported cache command: unknown-command") == true)
 }
 
+@Test func driveStatusCommandIgnoresRowLimitForAggregateCounts() throws {
+    let tempRoot = try temporaryHarnessDirectory(named: "drive-status-limit")
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let driveRoot = tempRoot.appendingPathComponent("MobileDocuments")
+    let container = driveRoot.appendingPathComponent("com~example~App")
+    try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+    try Data("ok".utf8).write(to: container.appendingPathComponent("one.txt"))
+    try Data("ok".utf8).write(to: container.appendingPathComponent("two.txt"))
+    try Data("ok".utf8).write(to: container.appendingPathComponent(".broken.txt.icloud"))
+
+    let sink = CommandRunnerHarnessSink()
+    let runner = CommandRunner(output: { sink.appendOutput($0) }, errorOutput: { sink.appendError($0) })
+
+    #expect(runner.run(arguments: ["icloud-cli", "drive", "status", "--icloud-root", driveRoot.path, "--limit", "1"]) == 0)
+
+    let output = try #require(sink.output.first)
+    let summary = try JSONDecoder().decode(ICloudDriveSyncSummary.self, from: Data(output.utf8))
+    #expect(summary.downloadedCount == 2)
+    #expect(summary.errorCount == 1)
+}
+
 @Test func commandRunnerHarnessReportsExpectedSafetyAndStoreFailures() throws {
     let database = try syntheticDirectInventoryDatabase(in: try temporaryHarnessDirectory(named: "failures"))
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
