@@ -142,6 +142,33 @@ import Testing
     #expect(options.rootDirectory.path == "/tmp/mobile-documents")
 }
 
+@Test func parsesDriveStatusCommandWithoutDefaultTraversalLimit() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "drive", "status", "--icloud-root", "/tmp/mobile-documents"])
+
+    guard case .metadata(let metadataCommand, let options) = command else {
+        Issue.record("Expected metadata command")
+        return
+    }
+
+    #expect(metadataCommand == .driveStatus)
+    #expect(options.limit == 50)
+    #expect(options.driveStatusLimit == nil)
+    #expect(options.rootDirectory?.path == "/tmp/mobile-documents")
+}
+
+@Test func parsesDriveStatusExplicitLimitSeparately() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "drive", "status", "--limit", "1", "--icloud-root", "/tmp/mobile-documents"])
+
+    guard case .metadata(let metadataCommand, let options) = command else {
+        Issue.record("Expected metadata command")
+        return
+    }
+
+    #expect(metadataCommand == .driveStatus)
+    #expect(options.limit == 1)
+    #expect(options.driveStatusLimit == 1)
+}
+
 @Test func parsesShortcutsListCommand() throws {
     let command = try CLIParser().parse(arguments: ["icloud-cli", "shortcuts", "list", "--name", "Daily", "--format", "text", "--shortcuts-dir", "/tmp/shortcuts"])
 
