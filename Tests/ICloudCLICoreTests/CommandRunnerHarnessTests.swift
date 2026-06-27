@@ -155,6 +155,34 @@ import Testing
     #expect(sink.errors[2].contains("No cached output found"))
 }
 
+@Test func driveStatusDefaultsToFullTraversalAndHonorsExplicitLimit() throws {
+    let root = try temporaryHarnessDirectory(named: "drive-status-limit")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let driveRoot = root.appendingPathComponent("MobileDocuments")
+    try FileManager.default.createDirectory(at: driveRoot.appendingPathComponent("com~apple~CloudDocs/Docs"), withIntermediateDirectories: true)
+    try Data("one".utf8).write(to: driveRoot.appendingPathComponent("com~apple~CloudDocs/Docs/a.txt"))
+    try Data("two".utf8).write(to: driveRoot.appendingPathComponent("com~apple~CloudDocs/Docs/b.txt"))
+
+    let sink = CommandRunnerHarnessSink()
+    let runner = CommandRunner(output: { sink.appendOutput($0) }, errorOutput: { sink.appendError($0) })
+
+    let fullExit = runner.run(arguments: ["icloud-cli", "drive", "status", "--icloud-root", driveRoot.path])
+    let cappedExit = runner.run(arguments: ["icloud-cli", "drive", "status", "--limit", "1", "--icloud-root", driveRoot.path])
+
+    #expect(fullExit == 0)
+    #expect(cappedExit == 0)
+    #expect(sink.errors.isEmpty)
+    #expect(sink.output.count == 2)
+
+    let decoder = JSONDecoder()
+    let full = try decoder.decode(ICloudDriveSyncSummary.self, from: Data(sink.output[0].utf8))
+    let capped = try decoder.decode(ICloudDriveSyncSummary.self, from: Data(sink.output[1].utf8))
+
+    #expect(full.downloadedCount + full.cloudOnlyCount + full.downloadingCount + full.uploadedCount + full.uploadingCount + full.errorCount + full.unknownCount == 2)
+    #expect(capped.downloadedCount + capped.cloudOnlyCount + capped.downloadingCount + capped.uploadedCount + capped.uploadingCount + capped.errorCount + capped.unknownCount == 1)
+}
+
 private func testFixturesRoot() -> URL {
     URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()

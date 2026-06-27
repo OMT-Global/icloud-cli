@@ -435,6 +435,7 @@ public struct MetadataOptions: Equatable, Sendable {
     public var since: String?
     public var until: String?
     public var limit: Int
+    public var driveStatusLimit: Int?
     public var confirmSensitive: Bool
     public var includeAttendees: Bool
     public var includeCoordinates: Bool
@@ -467,6 +468,7 @@ public struct MetadataOptions: Equatable, Sendable {
         since: String? = nil,
         until: String? = nil,
         limit: Int = 50,
+        driveStatusLimit: Int? = nil,
         confirmSensitive: Bool = false,
         includeAttendees: Bool = false,
         includeCoordinates: Bool = false,
@@ -498,6 +500,7 @@ public struct MetadataOptions: Equatable, Sendable {
         self.since = since
         self.until = until
         self.limit = limit
+        self.driveStatusLimit = driveStatusLimit
         self.confirmSensitive = confirmSensitive
         self.includeAttendees = includeAttendees
         self.includeCoordinates = includeCoordinates
@@ -1020,7 +1023,11 @@ public struct CLIParser: Sendable {
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--handoff-dir": options.handoffDirectory = try parseURL(after: token, in: tokens, at: &index)
-            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--limit":
+                let rawLimit = try value(after: token, in: tokens, at: &index)
+                guard let limit = Int(rawLimit) else { throw CLIParseError.missingValue(token) }
+                options.limit = limit
+                options.driveStatusLimit = limit
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
