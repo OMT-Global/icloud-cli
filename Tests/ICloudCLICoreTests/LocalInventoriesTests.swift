@@ -61,6 +61,26 @@ import Testing
     #expect(try reader.listPhotos().map(\.mediaType) == ["photo"])
 }
 
+@Test func limitsSyntheticPhotoInventoryWalks() throws {
+    let root = try temporaryDirectory(named: "media-limit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let photos = root.appendingPathComponent("Photos.photoslibrary/originals")
+    try FileManager.default.createDirectory(at: photos, withIntermediateDirectories: true)
+    try Data("one".utf8).write(to: photos.appendingPathComponent("IMG_0001.HEIC"))
+    try Data("two".utf8).write(to: photos.appendingPathComponent("IMG_0002.HEIC"))
+
+    let reader = PhotosInventoryReader(photosLibraryDirectory: root.appendingPathComponent("Photos.photoslibrary"))
+
+    #expect(try reader.listPhotos(limit: 1).count == 1)
+}
+
+@Test func mapsSQLiteAuthorizationDeniedToPermissionError() {
+    let error = sqliteError(from: Data("Error: unable to open database \"/tmp/private.sqlite\": authorization denied".utf8), store: "/tmp/private.sqlite")
+
+    #expect(error == .permissionDenied("/tmp/private.sqlite"))
+    #expect(error.localizedDescription.contains("Full Disk Access"))
+}
+
 @Test func readsSyntheticSQLiteInventoriesAndSensitiveGates() throws {
     let database = try syntheticInventoryDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
@@ -87,6 +107,35 @@ import Testing
     #expect(try reader.newsTopics().map(\.name) == ["Technology"])
 }
 
+@Test func readsAppleRemindersCoreDataSchema() throws {
+    let database = try appleRemindersFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let lists = try reader.reminderLists()
+    #expect(lists.first?.name == "Work")
+    #expect(lists.first?.itemCount == 1)
+
+    let reminders = try reader.reminders(list: "Work", dueBefore: "2027-01-01T00:00:00Z", dueAfter: nil, includeCompleted: false)
+    #expect(reminders.map(\.title) == ["Ship PR"])
+    #expect(reminders.first?.listName == "Work")
+    #expect(reminders.first?.isCompleted == false)
+}
+
+@Test func readsAppleMapsCoreDataSchema() throws {
+    let database = try appleMapsFixtureDatabase()
+    defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
+    let reader = LocalSQLiteInventoryReader(database: database)
+
+    let favorites = try reader.mapFavorites()
+    #expect(favorites.first?.name == "Home")
+    #expect(favorites.first?.address == "1 Example Way")
+
+    let recents = try reader.mapRecents(limit: 1)
+    #expect(recents.map(\.name) == ["Coffee"])
+    #expect(recents.first?.searchedAt == "2026-01-01T12:00:00Z")
+}
+
 @Test func readsAppleMessagesChatDatabaseSchema() throws {
     let database = try appleMessagesFixtureDatabase()
     defer { try? FileManager.default.removeItem(at: database.deletingLastPathComponent()) }
@@ -106,6 +155,47 @@ import Testing
     #expect(recent.map(\.chatIdentifier) == ["iMessage;+;chat@example.com"])
     #expect(recent.first?.sender == "alice@example.com")
     #expect(recent.first?.body == nil)
+}
+
+@Test func readsAppleMessagesRecentWithoutChatJoin() throws {
+    let root = try temporaryDirectory(named: "apple-messages-direct")
+    let database = root.appendingPathComponent("chat.db")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE message (ROWID INTEGER PRIMARY KEY, handle_id INTEGER, date INTEGER, is_from_me INTEGER, text TEXT);
+    CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
+    CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, display_name TEXT);
+    CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+    INSERT INTO handle VALUES (1, 'alice@example.com');
+    INSERT INTO message VALUES (1, 1, 771206400000000000, NULL, 'private body');
+    """
+    try runSQLite(database: database, sql: sql)
+
+    let recent = try LocalSQLiteInventoryReader(database: database).recentMessages(confirmSensitive: true, includeBody: false, since: nil, limit: 10)
+
+    #expect(recent.map(\.chatIdentifier) == ["alice@example.com"])
+    #expect(recent.first?.isFromMe == false)
+    #expect(recent.first?.body == nil)
+}
+
+@Test func readsAppleSafariHistorySchema() throws {
+    let root = try temporaryDirectory(named: "apple-safari-history")
+    let database = root.appendingPathComponent("History.db")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sql = """
+    CREATE TABLE history_items (id INTEGER PRIMARY KEY, url TEXT, visit_count INTEGER);
+    CREATE TABLE history_visits (id INTEGER PRIMARY KEY, history_item INTEGER, visit_time REAL, title TEXT, load_successful INTEGER);
+    INSERT INTO history_items VALUES (1, 'https://example.com/private/path', 3);
+    INSERT INTO history_visits VALUES (1, 1, 788961600, 'Example', 1);
+    """
+    try runSQLite(database: database, sql: sql)
+
+    let history = try LocalSQLiteInventoryReader(database: database).safariHistory(confirmSensitive: true, since: "2026-01-01T00:00:00Z", until: nil, limit: 10, redactURLs: true)
+
+    #expect(history.map(\.url) == ["https://example.com"])
+    #expect(history.first?.title == "Example")
+    #expect(history.first?.visitedAt == "2026-01-01T12:00:00Z")
+    #expect(history.first?.visitCount == 3)
 }
 
 @Test func limitsMessageConversations() throws {
@@ -196,6 +286,66 @@ private func appleMessagesFixtureDatabase() throws -> URL {
     INSERT INTO message VALUES (1, 1, 771206400000000000, 0, 'private body');
     INSERT INTO chat_message_join VALUES (1, 1);
     INSERT INTO chat_handle_join VALUES (1, 1);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func appleRemindersFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-reminders")
+    let database = root.appendingPathComponent("Data-example.sqlite")
+    let sql = """
+    CREATE TABLE ZREMCDBASELIST (
+        Z_PK INTEGER PRIMARY KEY,
+        ZMARKEDFORDELETION INTEGER,
+        ZNAME TEXT
+    );
+    CREATE TABLE ZREMCDREMINDER (
+        Z_PK INTEGER PRIMARY KEY,
+        ZMARKEDFORDELETION INTEGER,
+        ZCOMPLETED INTEGER,
+        ZFLAGGED INTEGER,
+        ZPRIORITY INTEGER,
+        ZLIST INTEGER,
+        ZTITLE TEXT,
+        ZNOTES TEXT,
+        ZDUEDATE REAL,
+        ZCREATIONDATE REAL
+    );
+    INSERT INTO ZREMCDBASELIST VALUES (1, 0, 'Work');
+    INSERT INTO ZREMCDREMINDER VALUES (1, 0, 0, 1, 5, 1, 'Ship PR', 'Review', 788961600, 788875200);
+    """
+    try runSQLite(database: database, sql: sql)
+    return database
+}
+
+private func appleMapsFixtureDatabase() throws -> URL {
+    let root = try temporaryDirectory(named: "apple-maps")
+    let database = root.appendingPathComponent("MapsSync_0.0.1")
+    let sql = """
+    CREATE TABLE ZFAVORITEITEM (
+        Z_PK INTEGER PRIMARY KEY,
+        ZHIDDEN INTEGER,
+        ZPOSITIONINDEX INTEGER,
+        ZLATITUDE REAL,
+        ZLONGITUDE REAL,
+        ZCUSTOMNAME TEXT,
+        ZMAPITEMNAME TEXT,
+        ZMAPITEMADDRESS TEXT,
+        ZMAPITEMCATEGORY TEXT
+    );
+    CREATE TABLE ZHISTORYITEM (
+        Z_PK INTEGER PRIMARY KEY,
+        ZPOSITIONINDEX INTEGER,
+        ZLATITUDE REAL,
+        ZLONGITUDE REAL,
+        ZCUSTOMNAME TEXT,
+        ZLOCATIONDISPLAY TEXT,
+        ZQUERY TEXT,
+        ZMODIFICATIONTIME REAL
+    );
+    INSERT INTO ZFAVORITEITEM VALUES (1, 0, 1, 1.0, 2.0, 'Home', 'Example Home', '1 Example Way', 'home');
+    INSERT INTO ZHISTORYITEM VALUES (1, 1, 3.0, 4.0, 'Coffee', '2 Example Way', 'coffee', 788961600);
     """
     try runSQLite(database: database, sql: sql)
     return database

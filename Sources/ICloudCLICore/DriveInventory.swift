@@ -74,7 +74,7 @@ public struct ICloudDriveInventoryReader: Sendable {
         self.rootDirectory = rootDirectory.standardizedFileURL
     }
 
-    public func listFiles(path requestedPath: String? = nil, depth: Int = 2) throws -> [ICloudDriveFile] {
+    public func listFiles(path requestedPath: String? = nil, depth: Int = 2, limit: Int? = nil) throws -> [ICloudDriveFile] {
         guard FileManager.default.fileExists(atPath: rootDirectory.path) else { throw DriveInventoryError.missingRoot(rootDirectory.path) }
         let startURL = try scopedURL(for: requestedPath)
         let startValues = try? startURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
@@ -82,13 +82,14 @@ public struct ICloudDriveInventoryReader: Sendable {
             return [fileEntry(for: startURL, values: startValues)]
         }
         let maxDepth = max(0, depth)
+        let maxFiles = limit.map { max(1, $0) }
         var result: [ICloudDriveFile] = []
-        try walkFiles(at: startURL, currentDepth: 0, maxDepth: maxDepth, into: &result)
+        try walkFiles(at: startURL, currentDepth: 0, maxDepth: maxDepth, maxFiles: maxFiles, into: &result)
         return result.sorted { lhs, rhs in lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending }
     }
 
-    public func syncStatus(path requestedPath: String? = nil) throws -> ICloudDriveSyncSummary {
-        let files = try listFiles(path: requestedPath, depth: Int.max)
+    public func syncStatus(path requestedPath: String? = nil, limit: Int? = nil) throws -> ICloudDriveSyncSummary {
+        let files = try listFiles(path: requestedPath, depth: Int.max, limit: limit)
         return ICloudDriveSyncSummary(
             downloadedCount: files.filter { $0.iCloudStatus == .downloaded }.count,
             cloudOnlyCount: files.filter { $0.iCloudStatus == .evicted || $0.iCloudStatus == .notDownloaded }.count,
@@ -100,15 +101,19 @@ public struct ICloudDriveInventoryReader: Sendable {
         )
     }
 
-    public func errorFiles(path requestedPath: String? = nil) throws -> [ICloudDriveErrorEntry] {
-        try listFiles(path: requestedPath, depth: Int.max)
+    public func errorFiles(path requestedPath: String? = nil, limit: Int = 500, scanLimit: Int? = nil) throws -> [ICloudDriveErrorEntry] {
+        let resultLimit = max(1, limit)
+        let traversalLimit = scanLimit ?? filteredDriveScanLimit(for: resultLimit)
+        return try listFiles(path: requestedPath, depth: Int.max, limit: traversalLimit)
             .filter { $0.iCloudStatus == .error }
+            .prefix(resultLimit)
             .map { ICloudDriveErrorEntry(path: $0.path, category: "icloud-sync-error") }
     }
 
     public func recentFiles(since: String? = nil, limit: Int = 50) throws -> [ICloudDriveFile] {
         let floor = since.flatMap { ISO8601DateFormatter().date(from: $0) }
-        return try listFiles(depth: Int.max)
+        let scanLimit = max(200, bounded(limit, defaultValue: 50, max: 1_000) * 5)
+        return try listFiles(depth: Int.max, limit: scanLimit)
             .filter { file in
                 guard let floor else { return true }
                 return file.modifiedAt.map { $0 >= floor } ?? false
@@ -118,9 +123,12 @@ public struct ICloudDriveInventoryReader: Sendable {
             .map { $0 }
     }
 
-    public func sharedItems(path requestedPath: String? = nil) throws -> [ICloudDriveSharedItem] {
-        try listFiles(path: requestedPath, depth: Int.max)
+    public func sharedItems(path requestedPath: String? = nil, limit: Int = 500, scanLimit: Int? = nil) throws -> [ICloudDriveSharedItem] {
+        let resultLimit = max(1, limit)
+        let traversalLimit = scanLimit ?? filteredDriveScanLimit(for: resultLimit)
+        return try listFiles(path: requestedPath, depth: Int.max, limit: traversalLimit)
             .filter { $0.path.localizedCaseInsensitiveContains(".shared") }
+            .prefix(resultLimit)
             .map { file in
                 ICloudDriveSharedItem(path: file.path, owner: nil, role: nil, dateShared: file.modifiedAt, iCloudStatus: file.iCloudStatus)
             }
@@ -133,7 +141,7 @@ public struct ICloudDriveInventoryReader: Sendable {
         for child in children {
             let values = try? child.resourceValues(forKeys: [.isDirectoryKey])
             guard values?.isDirectory == true else { continue }
-            let stats = directoryStats(child)
+            let stats: (sizeBytes: Int64?, modifiedAt: Date?) = shouldComputeContainerStats(for: sortBy) ? directoryStats(child) : (nil, nil)
             containers.append(ICloudDriveContainer(bundleId: child.lastPathComponent, displayName: displayName(for: child.lastPathComponent), sizeBytes: stats.sizeBytes, modifiedAt: stats.modifiedAt))
         }
         return sort(containers, by: sortBy)
@@ -149,7 +157,14 @@ public struct ICloudDriveInventoryReader: Sendable {
         return standardized
     }
 
-    private func walkFiles(at directory: URL, currentDepth: Int, maxDepth: Int, into result: inout [ICloudDriveFile]) throws {
+    private func filteredDriveScanLimit(for resultLimit: Int) -> Int {
+        max(200, bounded(resultLimit, defaultValue: 500, max: 2_000) * 5)
+    }
+
+    private func walkFiles(at directory: URL, currentDepth: Int, maxDepth: Int, maxFiles: Int?, into result: inout [ICloudDriveFile]) throws {
+        if let maxFiles, result.count >= maxFiles {
+            return
+        }
         let directoryValues = try? directory.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
         if directoryValues?.isDirectory != true {
             result.append(fileEntry(for: directory, values: directoryValues))
@@ -157,9 +172,12 @@ public struct ICloudDriveInventoryReader: Sendable {
         }
         let children = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey], options: [])
         for child in children {
+            if let maxFiles, result.count >= maxFiles {
+                return
+            }
             let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
             if values?.isDirectory == true {
-                if currentDepth < maxDepth { try walkFiles(at: child, currentDepth: currentDepth + 1, maxDepth: maxDepth, into: &result) }
+                if currentDepth < maxDepth { try walkFiles(at: child, currentDepth: currentDepth + 1, maxDepth: maxDepth, maxFiles: maxFiles, into: &result) }
                 continue
             }
             result.append(fileEntry(for: child, values: values))
@@ -173,6 +191,7 @@ public struct ICloudDriveInventoryReader: Sendable {
 
     private func status(for url: URL) -> ICloudFileStatus {
         let name = url.lastPathComponent
+        if name.hasPrefix(".broken") && name.hasSuffix(".icloud") { return .error }
         if name.hasPrefix(".") && name.hasSuffix(".icloud") { return .evicted }
         if name.hasSuffix(".icloud") { return .uploading }
         return .downloaded
@@ -218,6 +237,13 @@ public struct ICloudDriveInventoryReader: Sendable {
         bundleId.replacingOccurrences(of: "com~apple~", with: "Apple ").replacingOccurrences(of: "~", with: ".")
     }
 
+    private func shouldComputeContainerStats(for sortBy: DriveSortKey) -> Bool {
+        switch sortBy {
+        case .size, .modified: return true
+        case .name: return false
+        }
+    }
+
     private func sort(_ containers: [ICloudDriveContainer], by key: DriveSortKey) -> [ICloudDriveContainer] {
         containers.sorted { lhs, rhs in
             switch key {
@@ -227,4 +253,9 @@ public struct ICloudDriveInventoryReader: Sendable {
             }
         }
     }
+}
+
+private func bounded(_ value: Int, defaultValue: Int, max: Int) -> Int {
+    guard value > 0 else { return defaultValue }
+    return Swift.min(value, max)
 }

@@ -164,10 +164,12 @@ public struct PhotosScreenshotsOptions: Equatable, Sendable {
 public struct PhotosListOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var photosLibrary: URL
+    public var limit: Int
 
-    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary")) {
+    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary"), limit: Int = 200) {
         self.format = format
         self.photosLibrary = photosLibrary
+        self.limit = limit
     }
 }
 
@@ -195,7 +197,7 @@ public struct RemindersListOptions: Equatable, Sendable {
     public var dueAfter: String?
     public var includeCompleted: Bool
 
-    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false) {
+    public init(format: OutputFormat = .json, store: URL = AppleRemindersStoreResolver().database() ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false) {
         self.format = format
         self.store = store
         self.list = list
@@ -266,7 +268,7 @@ public struct MapsOptions: Equatable, Sendable {
     public var store: URL
     public var limit: Int
 
-    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Library/Maps/Maps.sqlite"), limit: Int = 20) {
+    public init(format: OutputFormat = .json, store: URL = AppleMapsStoreResolver().database() ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Library/Maps/Maps.sqlite"), limit: Int = 20) {
         self.format = format
         self.store = store
         self.limit = limit
@@ -433,6 +435,7 @@ public struct MetadataOptions: Equatable, Sendable {
     public var since: String?
     public var until: String?
     public var limit: Int
+    public var driveStatusLimit: Int?
     public var confirmSensitive: Bool
     public var includeAttendees: Bool
     public var includeCoordinates: Bool
@@ -465,6 +468,7 @@ public struct MetadataOptions: Equatable, Sendable {
         since: String? = nil,
         until: String? = nil,
         limit: Int = 50,
+        driveStatusLimit: Int? = nil,
         confirmSensitive: Bool = false,
         includeAttendees: Bool = false,
         includeCoordinates: Bool = false,
@@ -496,6 +500,7 @@ public struct MetadataOptions: Equatable, Sendable {
         self.since = since
         self.until = until
         self.limit = limit
+        self.driveStatusLimit = driveStatusLimit
         self.confirmSensitive = confirmSensitive
         self.includeAttendees = includeAttendees
         self.includeCoordinates = includeCoordinates
@@ -1018,7 +1023,10 @@ public struct CLIParser: Sendable {
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--handoff-dir": options.handoffDirectory = try parseURL(after: token, in: tokens, at: &index)
-            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--limit":
+                let rawLimit = try value(after: token, in: tokens, at: &index)
+                guard let limit = Int(rawLimit) else { throw CLIParseError.missingValue(token) }
+                options.limit = limit
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1061,6 +1069,7 @@ public struct CLIParser: Sendable {
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--photos-library": options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1239,7 +1248,7 @@ public struct CLIParser: Sendable {
             let token = tokens[index]
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
-            case "--store", "--metadata-store", "--calendar-store", "--findmy-store", "--mail-store", "--books-store", "--health-store", "--notes-store", "--photos-store", "--safari-store", "--music-store", "--weather-store", "--stocks-store", "--freeform-store", "--home-store", "--voice-memos-store":
+            case "--store", "--metadata-store", "--calendar-store", "--findmy-store", "--mail-store", "--books-store", "--health-store", "--notes-store", "--photos-store", "--reminders-store", "--safari-store", "--music-store", "--weather-store", "--stocks-store", "--freeform-store", "--home-store", "--voice-memos-store":
                 options.store = try parseURL(after: token, in: tokens, at: &index)
             case "--cache-file":
                 options.store = try parseURL(after: token, in: tokens, at: &index)
@@ -1270,7 +1279,10 @@ public struct CLIParser: Sendable {
             case "--tag": options.tag = try value(after: token, in: tokens, at: &index)
             case "--since": options.since = try value(after: token, in: tokens, at: &index)
             case "--until": options.until = try value(after: token, in: tokens, at: &index)
-            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--limit":
+                let limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+                options.limit = limit
+                options.driveStatusLimit = limit
             case "--confirm-sensitive": options.confirmSensitive = true
             case "--include-attendees": options.includeAttendees = true
             case "--include-coordinates": options.includeCoordinates = true
@@ -1325,13 +1337,13 @@ Usage:
   icloud-cli handoff list [--limit N] [--format json|text] [--handoff-dir PATH]
   icloud-cli drive list [--path PATH] [--depth N] [--show-status] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive status [--path PATH] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive errors [--path PATH] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive shared [--path PATH] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive status [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive errors [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive shared [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
   icloud-cli drive recents [--since ISO8601] [--limit N] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
-  icloud-cli photos list [--format json|text] [--photos-library PATH]
+  icloud-cli photos list [--limit N] [--format json|text] [--photos-library PATH]
   icloud-cli photos shared-albums [--format json|text] [--photos-store PATH]
   icloud-cli photos shared-library [--format json|text] [--photos-store PATH]
   icloud-cli notes list [--folder NAME] [--modified-since ISO8601] [--include-body] [--format json|text] [--notes-store PATH]

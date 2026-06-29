@@ -26,6 +26,7 @@ public enum SafariTabsError: Error, LocalizedError, Equatable {
     case noReadableSources([String])
     case noTabsFound([String])
     case noTabsFoundWithUnreadableSources(readable: [String], unreadable: [String])
+    case permissionDenied([String])
     case unsupportedFormat(String)
 
     public var errorDescription: String? {
@@ -39,6 +40,8 @@ public enum SafariTabsError: Error, LocalizedError, Equatable {
                 Readable Safari session files did not contain tabs: \(readable.joined(separator: ", ")); \
                 unreadable Safari session files: \(unreadable.joined(separator: ", "))
                 """
+        case .permissionDenied(let paths):
+            return "Permission denied reading Safari session files: \(paths.joined(separator: ", ")). Grant Full Disk Access to the calling terminal or agent process, then retry."
         case .unsupportedFormat(let format):
             return "Unsupported output format: \(format)"
         }
@@ -55,6 +58,7 @@ public struct SafariTabsReader: Sendable {
     public func readTabs(source: SafariTabSource = .all) throws -> [SafariTab] {
         let files = sessionFiles(for: source)
         var unreadablePaths: [String] = []
+        var permissionDeniedPaths: [String] = []
         var readablePaths: [String] = []
         var tabs: [SafariTab] = []
 
@@ -63,21 +67,28 @@ public struct SafariTabsReader: Sendable {
                 let sourceTabs = try readTabs(from: file.url, sourceName: file.sourceName)
                 readablePaths.append(file.url.path)
                 tabs.append(contentsOf: sourceTabs)
-            } catch CocoaError.fileReadNoSuchFile, CocoaError.fileReadNoPermission {
+            } catch CocoaError.fileReadNoSuchFile {
                 unreadablePaths.append(file.url.path)
             } catch {
-                unreadablePaths.append(file.url.path)
+                if isPermissionDenied(error) {
+                    permissionDeniedPaths.append(file.url.path)
+                } else {
+                    unreadablePaths.append(file.url.path)
+                }
             }
         }
 
         if tabs.isEmpty && !files.isEmpty {
             if readablePaths.isEmpty {
+                if !permissionDeniedPaths.isEmpty {
+                    throw SafariTabsError.permissionDenied(permissionDeniedPaths)
+                }
                 throw SafariTabsError.noReadableSources(unreadablePaths)
             }
-            if !unreadablePaths.isEmpty {
+            if !unreadablePaths.isEmpty || !permissionDeniedPaths.isEmpty {
                 throw SafariTabsError.noTabsFoundWithUnreadableSources(
                     readable: readablePaths,
-                    unreadable: unreadablePaths
+                    unreadable: unreadablePaths + permissionDeniedPaths
                 )
             }
             throw SafariTabsError.noTabsFound(readablePaths)
@@ -126,6 +137,15 @@ public struct SafariTabsReader: Sendable {
 
         return result
     }
+}
+
+private func isPermissionDenied(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoPermissionError {
+        return true
+    }
+    let message = nsError.localizedDescription.lowercased()
+    return message.contains("permission") || message.contains("operation not permitted") || message.contains("authorization denied")
 }
 
 public struct SafariSessionPlistParser: Sendable {

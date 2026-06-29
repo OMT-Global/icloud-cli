@@ -3,6 +3,7 @@ import Foundation
 public enum LocalInventoryError: Error, LocalizedError, Equatable {
     case missingRoot(String)
     case missingStore(String)
+    case permissionDenied(String)
     case sensitiveConfirmationRequired(String)
     case unsupportedSchema(store: String, detail: String)
     case sqliteFailure(String)
@@ -11,6 +12,8 @@ public enum LocalInventoryError: Error, LocalizedError, Equatable {
         switch self {
         case .missingRoot(let path): return "Inventory root not available: \(path)"
         case .missingStore(let path): return "Inventory store not available: \(path)"
+        case .permissionDenied(let path):
+            return "Permission denied reading local inventory store: \(path). Grant Full Disk Access to the calling terminal or agent process, then retry."
         case .sensitiveConfirmationRequired(let command):
             return "\(command) reads high-sensitivity local data; rerun with --confirm-sensitive"
         case .unsupportedSchema(let store, let detail):
@@ -64,7 +67,7 @@ public struct PhotosInventoryReader: Sendable {
             .sorted { $0.filename.localizedStandardCompare($1.filename) == .orderedAscending }
     }
 
-    public func listPhotos() throws -> [PhotoAsset] {
+    public func listPhotos(limit: Int = 200) throws -> [PhotoAsset] {
         guard FileManager.default.fileExists(atPath: photosLibraryDirectory.path) else {
             throw LocalInventoryError.missingRoot(photosLibraryDirectory.path)
         }
@@ -75,6 +78,7 @@ public struct PhotosInventoryReader: Sendable {
         ) else {
             return []
         }
+        let maxAssets = bounded(limit, defaultValue: 200, max: 10_000)
         var assets: [PhotoAsset] = []
         for case let url as URL in enumerator {
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey])
@@ -88,6 +92,9 @@ public struct PhotosInventoryReader: Sendable {
                 isFavorite: false,
                 albumNames: []
             ))
+            if assets.count >= maxAssets {
+                break
+            }
         }
         return assets.sorted { $0.filename.localizedStandardCompare($1.filename) == .orderedAscending }
     }
@@ -303,10 +310,16 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func reminderLists() throws -> [ReminderListSummary] {
-        try query("SELECT listName AS name, COUNT(*) AS itemCount FROM reminders GROUP BY listName ORDER BY listName ASC;")
+        if try tableExists("ZREMCDREMINDER"), try tableExists("ZREMCDBASELIST") {
+            return try appleReminderLists()
+        }
+        return try query("SELECT listName AS name, COUNT(*) AS itemCount FROM reminders GROUP BY listName ORDER BY listName ASC;")
     }
 
     public func reminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool) throws -> [ReminderEntry] {
+        if try tableExists("ZREMCDREMINDER"), try tableExists("ZREMCDBASELIST") {
+            return try appleReminders(list: list, dueBefore: dueBefore, dueAfter: dueAfter, includeCompleted: includeCompleted)
+        }
         var filters: [String?] = [
             list.map { "listName = '\(sqlEscape($0))'" },
             dueBefore.map { "dueAt IS NOT NULL AND dueAt <= '\(sqlEscape($0))'" },
@@ -317,14 +330,85 @@ public struct LocalSQLiteInventoryReader: Sendable {
         return try query("SELECT title, listName, dueAt, isCompleted, priority, notes, createdAt FROM reminders\(whereClause) ORDER BY dueAt ASC, createdAt ASC;")
     }
 
+    private func appleReminderLists() throws -> [ReminderListSummary] {
+        try query("""
+            SELECT
+                COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) AS name,
+                COUNT(r.Z_PK) AS itemCount
+            FROM ZREMCDBASELIST l
+            LEFT JOIN ZREMCDREMINDER r ON r.ZLIST = l.Z_PK
+                AND COALESCE(r.ZMARKEDFORDELETION, 0) = 0
+            WHERE COALESCE(l.ZMARKEDFORDELETION, 0) = 0
+            GROUP BY l.Z_PK
+            ORDER BY name ASC;
+            """)
+    }
+
+    private func appleReminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool) throws -> [ReminderEntry] {
+        let dueExpression = appleDateExpression("r.ZDUEDATE")
+        let createdExpression = appleDateExpression("r.ZCREATIONDATE")
+        var filters: [String?] = [
+            "COALESCE(r.ZMARKEDFORDELETION, 0) = 0",
+            list.map { "COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) = '\(sqlEscape($0))'" },
+            dueBefore.map { "\(dueExpression) IS NOT NULL AND \(dueExpression) <= '\(sqlEscape($0))'" },
+            dueAfter.map { "\(dueExpression) IS NOT NULL AND \(dueExpression) >= '\(sqlEscape($0))'" },
+        ]
+        if !includeCompleted {
+            filters.append("COALESCE(r.ZCOMPLETED, 0) = 0")
+        }
+        let whereClause = andClause(filters)
+        return try query("""
+            SELECT
+                COALESCE(NULLIF(r.ZTITLE, ''), 'Reminder ' || r.Z_PK) AS title,
+                COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) AS listName,
+                \(dueExpression) AS dueAt,
+                COALESCE(r.ZCOMPLETED, 0) AS isCompleted,
+                COALESCE(r.ZPRIORITY, 0) AS priority,
+                r.ZNOTES AS notes,
+                \(createdExpression) AS createdAt
+            FROM ZREMCDREMINDER r
+            LEFT JOIN ZREMCDBASELIST l ON l.Z_PK = r.ZLIST
+            \(whereClause)
+            ORDER BY dueAt ASC, createdAt ASC;
+            """)
+    }
+
     public func safariHistory(confirmSensitive: Bool, since: String?, until: String?, limit: Int, redactURLs: Bool) throws -> [SafariHistoryEntry] {
         guard confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli safari history") }
+        if try tableExists("history_items"), try tableExists("history_visits") {
+            return try appleSafariHistory(since: since, until: until, limit: limit, redactURLs: redactURLs)
+        }
         let floor = since ?? ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -86_400))
         let whereClause = andClause([
             "visitedAt >= '\(sqlEscape(floor))'",
             until.map { "visitedAt <= '\(sqlEscape($0))'" },
         ])
         let rows: [SafariHistoryEntry] = try query("SELECT url, title, visitedAt, visitCount FROM safari_history\(whereClause) ORDER BY visitedAt DESC LIMIT \(bounded(limit, defaultValue: 100, max: 1000));")
+        if !redactURLs { return rows }
+        return rows.map { SafariHistoryEntry(url: redactURL($0.url), title: $0.title, visitedAt: $0.visitedAt, visitCount: $0.visitCount) }
+    }
+
+    private func appleSafariHistory(since: String?, until: String?, limit: Int, redactURLs: Bool) throws -> [SafariHistoryEntry] {
+        let timestampExpression = "strftime('%Y-%m-%dT%H:%M:%SZ', v.visit_time + 978307200, 'unixepoch')"
+        let floor = since ?? ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -86_400))
+        let whereClause = andClause([
+            "i.url IS NOT NULL",
+            "v.load_successful = 1",
+            "\(timestampExpression) >= '\(sqlEscape(floor))'",
+            until.map { "\(timestampExpression) <= '\(sqlEscape($0))'" },
+        ])
+        let rows: [SafariHistoryEntry] = try query("""
+            SELECT
+                i.url AS url,
+                v.title AS title,
+                \(timestampExpression) AS visitedAt,
+                COALESCE(i.visit_count, 1) AS visitCount
+            FROM history_visits v
+            JOIN history_items i ON i.id = v.history_item
+            \(whereClause)
+            ORDER BY v.visit_time DESC
+            LIMIT \(bounded(limit, defaultValue: 100, max: 1000));
+            """)
         if !redactURLs { return rows }
         return rows.map { SafariHistoryEntry(url: redactURL($0.url), title: $0.title, visitedAt: $0.visitedAt, visitCount: $0.visitCount) }
     }
@@ -368,10 +452,10 @@ public struct LocalSQLiteInventoryReader: Sendable {
         let floorPredicate = appleFloor.map { "WHERE m.date >= \($0)" } ?? ""
         return try query("""
             SELECT
-                COALESCE(c.chat_identifier, c.guid) AS chatIdentifier,
+                COALESCE(c.chat_identifier, c.guid, h.id, 'unknown') AS chatIdentifier,
                 h.id AS sender,
                 CAST(m.date AS TEXT) AS sentAt,
-                m.is_from_me AS isFromMe,
+                COALESCE(m.is_from_me, 0) AS isFromMe,
                 \(appleBodyColumn)
             FROM message m
             LEFT JOIN handle h ON h.ROWID = m.handle_id
@@ -470,12 +554,51 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func mapFavorites() throws -> [MapPlace] {
+        if try tableExists("ZFAVORITEITEM") {
+            return try appleMapFavorites()
+        }
         let rows: [RawMapPlace] = try query("SELECT name, address, latitude, longitude, category, NULL AS searchedAt FROM map_favorites ORDER BY name ASC;")
         return rows.map { $0.place() }
     }
 
     public func mapRecents(limit: Int) throws -> [MapPlace] {
+        if try tableExists("ZHISTORYITEM") {
+            return try appleMapRecents(limit: limit)
+        }
         let rows: [RawMapPlace] = try query("SELECT name, address, latitude, longitude, category, searchedAt FROM map_recents ORDER BY searchedAt DESC LIMIT \(bounded(limit, defaultValue: 20, max: 1000));")
+        return rows.map { $0.place() }
+    }
+
+    private func appleMapFavorites() throws -> [MapPlace] {
+        let rows: [RawMapPlace] = try query("""
+            SELECT
+                COALESCE(NULLIF(ZCUSTOMNAME, ''), NULLIF(ZMAPITEMNAME, ''), NULLIF(ZMAPITEMADDRESS, ''), 'Favorite ' || Z_PK) AS name,
+                ZMAPITEMADDRESS AS address,
+                ZLATITUDE AS latitude,
+                ZLONGITUDE AS longitude,
+                ZMAPITEMCATEGORY AS category,
+                NULL AS searchedAt
+            FROM ZFAVORITEITEM
+            WHERE COALESCE(ZHIDDEN, 0) = 0
+            ORDER BY COALESCE(ZPOSITIONINDEX, Z_PK) ASC;
+            """)
+        return rows.map { $0.place() }
+    }
+
+    private func appleMapRecents(limit: Int) throws -> [MapPlace] {
+        let searchedAt = appleDateExpression("ZMODIFICATIONTIME")
+        let rows: [RawMapPlace] = try query("""
+            SELECT
+                COALESCE(NULLIF(ZCUSTOMNAME, ''), NULLIF(ZLOCATIONDISPLAY, ''), NULLIF(ZQUERY, ''), 'Recent Place ' || Z_PK) AS name,
+                ZLOCATIONDISPLAY AS address,
+                ZLATITUDE AS latitude,
+                ZLONGITUDE AS longitude,
+                NULL AS category,
+                \(searchedAt) AS searchedAt
+            FROM ZHISTORYITEM
+            ORDER BY ZMODIFICATIONTIME DESC
+            LIMIT \(bounded(limit, defaultValue: 20, max: 1000));
+            """)
         return rows.map { $0.place() }
     }
 
@@ -599,6 +722,58 @@ public struct AddressBookStoreResolver: Sendable {
     }
 }
 
+public struct AppleRemindersStoreResolver: Sendable {
+    public let storesDirectory: URL
+
+    public init(storesDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Group Containers/group.com.apple.reminders/Container_v1/Stores")) {
+        self.storesDirectory = storesDirectory
+    }
+
+    public func database() -> URL? {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: storesDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+        return contents
+            .filter { $0.lastPathComponent.hasPrefix("Data-") && $0.pathExtension == "sqlite" }
+            .sorted { lhs, rhs in
+                let lhsValues = try? lhs.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                let rhsValues = try? rhs.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                let lhsDate = lhsValues?.contentModificationDate ?? .distantPast
+                let rhsDate = rhsValues?.contentModificationDate ?? .distantPast
+                if lhsDate != rhsDate {
+                    return lhsDate > rhsDate
+                }
+                let lhsSize = lhsValues?.fileSize ?? 0
+                let rhsSize = rhsValues?.fileSize ?? 0
+                if lhsSize != rhsSize {
+                    return lhsSize > rhsSize
+                }
+                return lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+            }
+            .first
+    }
+}
+
+public struct AppleMapsStoreResolver: Sendable {
+    public let mapsDirectory: URL
+
+    public init(mapsDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Maps/Data/Maps")) {
+        self.mapsDirectory = mapsDirectory
+    }
+
+    public func database() -> URL? {
+        let candidates = [
+            mapsDirectory.appendingPathComponent("MapsSync_0.0.1"),
+            mapsDirectory.appendingPathComponent("MapsSync_0.0.1_deviceLocalCache.db"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+}
+
 private struct SQLiteTableRow: Decodable {
     let name: String
 }
@@ -615,6 +790,9 @@ private struct ContactFieldListSQL {
 func sqliteError(from errorData: Data, store: String) -> LocalInventoryError {
     let message = String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     let lowercased = message.lowercased()
+    if lowercased.contains("authorization denied") || lowercased.contains("operation not permitted") || lowercased.contains("permission denied") {
+        return .permissionDenied(store)
+    }
     if lowercased.contains("no such table") || lowercased.contains("no such column") {
         return .unsupportedSchema(store: store, detail: message)
     }
