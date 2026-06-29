@@ -169,6 +169,18 @@ import Testing
     #expect(options.driveStatusLimit == 1)
 }
 
+@Test func parsesHandoffListLimit() throws {
+    let command = try CLIParser().parse(arguments: ["icloud-cli", "handoff", "list", "--limit", "3", "--handoff-dir", "/tmp/handoff"])
+
+    guard case .handoffList(let options) = command else {
+        Issue.record("Expected handoff list command")
+        return
+    }
+
+    #expect(options.limit == 3)
+    #expect(options.handoffDirectory.path == "/tmp/handoff")
+}
+
 @Test func parsesShortcutsListCommand() throws {
     let command = try CLIParser().parse(arguments: ["icloud-cli", "shortcuts", "list", "--name", "Daily", "--format", "text", "--shortcuts-dir", "/tmp/shortcuts"])
 

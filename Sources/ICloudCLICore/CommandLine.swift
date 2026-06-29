@@ -1027,7 +1027,6 @@ public struct CLIParser: Sendable {
                 let rawLimit = try value(after: token, in: tokens, at: &index)
                 guard let limit = Int(rawLimit) else { throw CLIParseError.missingValue(token) }
                 options.limit = limit
-                options.driveStatusLimit = limit
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1280,7 +1279,10 @@ public struct CLIParser: Sendable {
             case "--tag": options.tag = try value(after: token, in: tokens, at: &index)
             case "--since": options.since = try value(after: token, in: tokens, at: &index)
             case "--until": options.until = try value(after: token, in: tokens, at: &index)
-            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--limit":
+                let limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+                options.limit = limit
+                options.driveStatusLimit = limit
             case "--confirm-sensitive": options.confirmSensitive = true
             case "--include-attendees": options.includeAttendees = true
             case "--include-coordinates": options.includeCoordinates = true

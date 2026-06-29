@@ -131,7 +131,7 @@ import Testing
     #expect(sink.output.last?.contains("Unsupported cache command: unknown-command") == true)
 }
 
-@Test func driveStatusCommandIgnoresRowLimitForAggregateCounts() throws {
+@Test func driveStatusCommandHonorsExplicitTraversalLimit() throws {
     let tempRoot = try temporaryHarnessDirectory(named: "drive-status-limit")
     defer { try? FileManager.default.removeItem(at: tempRoot) }
 
@@ -149,8 +149,7 @@ import Testing
 
     let output = try #require(sink.output.first)
     let summary = try JSONDecoder().decode(ICloudDriveSyncSummary.self, from: Data(output.utf8))
-    #expect(summary.downloadedCount == 2)
-    #expect(summary.errorCount == 1)
+    #expect(summary.downloadedCount + summary.cloudOnlyCount + summary.downloadingCount + summary.uploadedCount + summary.uploadingCount + summary.errorCount + summary.unknownCount == 1)
 }
 
 @Test func commandRunnerHarnessReportsExpectedSafetyAndStoreFailures() throws {
