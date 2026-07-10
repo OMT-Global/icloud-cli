@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>UnrelatedCache</key>
+    <dict>
+        <key>DeviceSnapshot</key>
+        <dict>
+            <key>name</key>
+            <string>Unrelated Mac</string>
+            <key>model</key>
+            <string>Unrelated Model</string>
+        </dict>
+        <key>QuotaSnapshot</key>
+        <dict>
+            <key>accountEmail</key>
+            <string>unrelated@example.com</string>
+            <key>totalBytes</key>
+            <integer>1000</integer>
+            <key>usedBytes</key>
+            <integer>900</integer>
+        </dict>
+    </dict>
+</dict>
+</plist>

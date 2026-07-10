@@ -10,11 +10,14 @@ public struct ICloudStorageStatus: Codable, Equatable, Sendable {
 
 public enum ICloudStorageStatusError: Error, LocalizedError, Equatable {
     case unavailable
+    case unreadable(String)
 
     public var errorDescription: String? {
         switch self {
         case .unavailable:
             return "iCloud quota cache not available; ensure iCloud is signed in and has synced recently"
+        case .unreadable(let path):
+            return "iCloud quota cache is unreadable or uses an unsupported schema: \(path)"
         }
     }
 }
@@ -27,22 +30,31 @@ public struct ICloudStorageStatusReader: Sendable {
     }
 
     public func readStatus() throws -> ICloudStorageStatus {
-        guard let plist = NSDictionary(contentsOf: cacheFile) else { throw ICloudStorageStatusError.unavailable }
-        if let status = parseStatus(from: plist) { return status }
-        throw ICloudStorageStatusError.unavailable
+        guard let plist = NSDictionary(contentsOf: cacheFile) else {
+            if FileManager.default.fileExists(atPath: cacheFile.path) {
+                throw ICloudStorageStatusError.unreadable(cacheFile.path)
+            }
+            throw ICloudStorageStatusError.unavailable
+        }
+        guard let accounts = mobileMeAccounts(in: plist) else {
+            throw ICloudStorageStatusError.unreadable(cacheFile.path)
+        }
+        let quotaBlocks = accounts.compactMap { $0["QuotaInfo"] }
+        guard quotaBlocks.count == 1,
+              let quota = quotaBlocks[0] as? NSDictionary,
+              let status = parseStatus(from: quota) else {
+            throw ICloudStorageStatusError.unreadable(cacheFile.path)
+        }
+        return status
     }
 
-    private func parseStatus(from plist: NSDictionary) -> ICloudStorageStatus? {
-        let candidates = nestedDictionaries(in: plist)
-        for dictionary in candidates {
-            guard let total = int64Value(dictionary["totalBytes"] ?? dictionary["quotaTotalBytes"] ?? dictionary["totalStorageBytes"] ?? dictionary["quotaTotal"]),
-                  let used = int64Value(dictionary["usedBytes"] ?? dictionary["quotaUsedBytes"] ?? dictionary["usedStorageBytes"] ?? dictionary["quotaUsed"]) else { continue }
-            let available = int64Value(dictionary["availableBytes"] ?? dictionary["quotaAvailableBytes"] ?? dictionary["availableStorageBytes"]) ?? max(0, total - used)
-            let email = stringValue(dictionary["accountEmail"] ?? dictionary["AccountID"] ?? dictionary["DSIDAccountEmail"] ?? dictionary["email"])
-            let refreshed = dateValue(dictionary["lastRefreshedAt"] ?? dictionary["LastSuccessfulSyncDate"] ?? dictionary["lastUpdated"] ?? dictionary["modifiedAt"])
-            return ICloudStorageStatus(totalBytes: total, usedBytes: used, availableBytes: available, accountEmail: email, lastRefreshedAt: refreshed)
-        }
-        return nil
+    private func parseStatus(from dictionary: NSDictionary) -> ICloudStorageStatus? {
+        guard let total = int64Value(dictionary["totalBytes"] ?? dictionary["quotaTotalBytes"] ?? dictionary["totalStorageBytes"] ?? dictionary["quotaTotal"]),
+              let used = int64Value(dictionary["usedBytes"] ?? dictionary["quotaUsedBytes"] ?? dictionary["usedStorageBytes"] ?? dictionary["quotaUsed"]) else { return nil }
+        let available = int64Value(dictionary["availableBytes"] ?? dictionary["quotaAvailableBytes"] ?? dictionary["availableStorageBytes"]) ?? max(0, total - used)
+        let email = stringValue(dictionary["accountEmail"] ?? dictionary["AccountID"] ?? dictionary["DSIDAccountEmail"] ?? dictionary["email"])
+        let refreshed = dateValue(dictionary["lastRefreshedAt"] ?? dictionary["LastSuccessfulSyncDate"] ?? dictionary["lastUpdated"] ?? dictionary["modifiedAt"])
+        return ICloudStorageStatus(totalBytes: total, usedBytes: used, availableBytes: available, accountEmail: email, lastRefreshedAt: refreshed)
     }
 }
 
@@ -100,7 +112,7 @@ public enum ICloudDevicesError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unreadable(let path): return "iCloud devices cache is unreadable: \(path)"
+        case .unreadable(let path): return "iCloud devices cache is unreadable or uses an unsupported schema: \(path)"
         }
     }
 }
@@ -114,8 +126,17 @@ public struct ICloudDevicesReader: Sendable {
 
     public func listDevices() throws -> [ICloudDevice] {
         guard let plist = NSDictionary(contentsOf: cacheFile) else { throw ICloudDevicesError.unreadable(cacheFile.path) }
-        let devices = nestedDictionaries(in: plist).compactMap(device(from:))
-        if devices.isEmpty { throw ICloudDevicesError.unreadable(cacheFile.path) }
+        guard let accounts = mobileMeAccounts(in: plist) else { throw ICloudDevicesError.unreadable(cacheFile.path) }
+        let deviceBlocks = accounts.compactMap { $0["Devices"] }
+        guard deviceBlocks.count == 1,
+              let rawDevices = deviceBlocks[0] as? [Any],
+              !rawDevices.isEmpty else {
+            throw ICloudDevicesError.unreadable(cacheFile.path)
+        }
+        let devices = rawDevices.compactMap { value in
+            (value as? NSDictionary).flatMap(device(from:))
+        }
+        guard devices.count == rawDevices.count else { throw ICloudDevicesError.unreadable(cacheFile.path) }
         return devices.sorted { lhs, rhs in lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending }
     }
 
@@ -127,6 +148,13 @@ public struct ICloudDevicesReader: Sendable {
         let lastSeen = dateValue(dictionary["lastSeenAt"] ?? dictionary["lastSeen"] ?? dictionary["LastSeenDate"])
         return ICloudDevice(name: name, model: model, osVersion: os, isCurrentDevice: current, lastSeenAt: lastSeen)
     }
+}
+
+private func mobileMeAccounts(in plist: NSDictionary) -> [NSDictionary]? {
+    guard let rawAccounts = plist["Accounts"] as? [Any], !rawAccounts.isEmpty else { return nil }
+    let accounts = rawAccounts.compactMap { $0 as? NSDictionary }
+    guard accounts.count == rawAccounts.count else { return nil }
+    return accounts
 }
 
 private func nestedDictionaries(in root: Any) -> [NSDictionary] {

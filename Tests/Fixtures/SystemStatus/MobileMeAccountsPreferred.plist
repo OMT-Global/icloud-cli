@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>UnrelatedCache</key>
+  <dict>
+    <key>QuotaSnapshot</key>
+    <dict>
+      <key>accountEmail</key><string>unrelated@example.com</string>
+      <key>totalBytes</key><integer>1000</integer>
+      <key>usedBytes</key><integer>900</integer>
+    </dict>
+    <key>DeviceSnapshot</key>
+    <dict>
+      <key>name</key><string>Unrelated Mac</string>
+      <key>model</key><string>Unrelated Model</string>
+    </dict>
+  </dict>
+  <key>Accounts</key>
+  <array>
+    <dict>
+      <key>AccountID</key><string>preferred@example.com</string>
+      <key>QuotaInfo</key>
+      <dict>
+        <key>DSIDAccountEmail</key><string>preferred@example.com</string>
+        <key>quotaTotalBytes</key><integer>400000000000</integer>
+        <key>quotaUsedBytes</key><integer>100000000000</integer>
+        <key>quotaAvailableBytes</key><integer>300000000000</integer>
+        <key>LastSuccessfulSyncDate</key><date>2026-05-14T10:00:00Z</date>
+      </dict>
+      <key>Devices</key>
+      <array>
+        <dict>
+          <key>DeviceName</key><string>Preferred Mac</string>
+          <key>ProductType</key><string>Mac15,10</string>
+          <key>OSVersion</key><string>15.5</string>
+          <key>IsThisDevice</key><true/>
+          <key>LastSeenDate</key><date>2026-05-14T09:30:00Z</date>
+        </dict>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>
