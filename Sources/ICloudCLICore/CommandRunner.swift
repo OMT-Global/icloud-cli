@@ -102,6 +102,9 @@ public struct CommandRunner: Sendable {
                 let screenshots = try PhotosInventoryReader(screenshotsDirectory: options.screenshotsDirectory).listScreenshots()
                 output(try render(screenshots, format: options.format))
                 return 0
+            case .providersList(let format):
+                output(try render(ProviderRegistry.manifest, format: format))
+                return 0
             case .remindersList(let options):
                 let reminders = try LocalSQLiteInventoryReader(database: options.store).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted)
                 output(try render(reminders, format: options.format))
@@ -258,6 +261,20 @@ public struct CommandRunner: Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         return String(decoding: try encoder.encode(value), as: UTF8.self)
+    }
+
+    public func render(_ manifest: ProviderManifest, format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(manifest), as: UTF8.self)
+        case .text:
+            let providers = manifest.providers.map { provider in
+                "\(provider.id) \(provider.displayName) maturity=\(provider.maturity.rawValue) source=\(provider.sourceKind.rawValue) access=\(provider.accessMode.rawValue) sensitivity=\(provider.sensitivity.rawValue) default-polling=\(provider.defaultPolling) commands=\(provider.commands.joined(separator: ",")) capabilities=\(provider.capabilities.joined(separator: ",")) permissions=\(provider.permissionExpectations.joined(separator: ","))"
+            }
+            return (["Provider manifest \(manifest.schemaVersion)"] + providers).joined(separator: "\n")
+        }
     }
 
     public func render(_ rows: [MetadataRow], format: OutputFormat) throws -> String {

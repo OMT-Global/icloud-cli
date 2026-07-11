@@ -533,6 +533,7 @@ public enum CLICommand: Equatable, Sendable {
     case notesList(NotesListOptions)
     case photosList(PhotosListOptions)
     case photosScreenshots(PhotosScreenshotsOptions)
+    case providersList(OutputFormat)
     case remindersList(RemindersListOptions)
     case remindersLists(RemindersListOptions)
     case safariBookmarks(SafariBookmarksOptions)
@@ -575,6 +576,19 @@ public struct CLIParser: Sendable {
         if tokens == ["--version"] || tokens == ["-V"] { return .version }
 
         let topCommand = tokens.removeFirst()
+        if topCommand == "providers" {
+            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["providers"] + tokens).joined(separator: " ")) }
+            tokens.removeFirst()
+            var format = OutputFormat.json
+            var index = 0
+            while index < tokens.count {
+                let token = tokens[index]
+                guard token == "--format" else { throw CLIParseError.unknownCommand(token) }
+                format = try parseFormat(after: token, in: tokens, at: &index)
+                index += 1
+            }
+            return .providersList(format)
+        }
         if topCommand == "snapshot" {
             return .metadata(.snapshot, try parseMetadataOptions(tokens))
         }
@@ -1326,6 +1340,7 @@ icloud-cli \(version)
 Created by OMT-Global.
 
 Usage:
+  icloud-cli providers list [--format json|text]
   icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
   icloud-cli account status [--format json|text] [--cache-file PATH]
   icloud-cli backup status [--format json|text] [--cache-file PATH]
@@ -1387,6 +1402,7 @@ Usage:
   icloud-cli safari extensions list [--profile NAME] [--format json|text] [--safari-store PATH]
 
 Commands:
+  providers list List the versioned, machine-readable provider capability manifest.
   snapshot       Emit a conservative redacted operator status payload.
   account status
                  Report iCloud sign-in and service enablement from local preferences.
