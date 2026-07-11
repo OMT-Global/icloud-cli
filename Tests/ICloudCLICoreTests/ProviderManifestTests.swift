@@ -26,6 +26,8 @@ import Testing
     #expect(reminders?.commands.contains("reminders authorization") == true)
     #expect(reminders?.capabilities.contains("eventkit-primary") == true)
     #expect(reminders?.permissionExpectations == ["eventkit-reminders-read", "full-disk-access-only-for-explicit-degraded-fallback"])
+    #expect(manifest.providers.first { $0.id == "messages" }?.capabilities.contains("consistent-snapshot") == true)
+    #expect(manifest.providers.first { $0.id == "safari" }?.capabilities.contains("consistent-snapshot") == true)
 }
 
 @Test func providerManifestJSONContainsMetadataOnly() throws {
