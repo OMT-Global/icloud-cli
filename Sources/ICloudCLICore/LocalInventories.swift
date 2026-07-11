@@ -4,6 +4,8 @@ public enum LocalInventoryError: Error, LocalizedError, Equatable {
     case missingRoot(String)
     case missingStore(String)
     case permissionDenied(String)
+    case lockedStore(String)
+    case queryTimeout(String)
     case sensitiveConfirmationRequired(String)
     case unsupportedSchema(store: String, detail: String)
     case sqliteFailure(String)
@@ -14,6 +16,8 @@ public enum LocalInventoryError: Error, LocalizedError, Equatable {
         case .missingStore(let path): return "Inventory store not available: \(path)"
         case .permissionDenied(let path):
             return "Permission denied reading local inventory store: \(path). Grant Full Disk Access to the calling terminal or agent process, then retry."
+        case .lockedStore(let path): return "Local inventory store is locked or busy: \(path)"
+        case .queryTimeout(let path): return "Timed out querying local inventory store: \(path)"
         case .sensitiveConfirmationRequired(let command):
             return "\(command) reads high-sensitivity local data; rerun with --confirm-sensitive"
         case .unsupportedSchema(let store, let detail):
@@ -247,9 +251,22 @@ public struct NewsTopicEntry: Codable, Equatable, Sendable {
 
 public struct LocalSQLiteInventoryReader: Sendable {
     public let database: URL
+    private let snapshotsLiveStores: Bool
+    private let reportedStore: String
+    private let snapshotWorkspace: URL?
 
     public init(database: URL) {
         self.database = database
+        self.snapshotsLiveStores = true
+        self.reportedStore = database.path
+        self.snapshotWorkspace = nil
+    }
+
+    private init(database: URL, snapshotsLiveStores: Bool, reportedStore: String, snapshotWorkspace: URL?) {
+        self.database = database
+        self.snapshotsLiveStores = snapshotsLiveStores
+        self.reportedStore = reportedStore
+        self.snapshotWorkspace = snapshotWorkspace
     }
 
     public func notes(folder: String?, modifiedSince: String?, includeBody: Bool) throws -> [NoteEntry] {
@@ -375,6 +392,11 @@ public struct LocalSQLiteInventoryReader: Sendable {
 
     public func safariHistory(confirmSensitive: Bool, since: String?, until: String?, limit: Int, redactURLs: Bool) throws -> [SafariHistoryEntry] {
         guard confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli safari history") }
+        if snapshotsLiveStores {
+            return try withSnapshot { reader in
+                try reader.safariHistory(confirmSensitive: true, since: since, until: until, limit: limit, redactURLs: redactURLs)
+            }
+        }
         if try tableExists("history_items"), try tableExists("history_visits") {
             return try appleSafariHistory(since: since, until: until, limit: limit, redactURLs: redactURLs)
         }
@@ -414,11 +436,14 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     public func messageConversations(limit: Int = 50) throws -> [MessageConversation] {
+        if snapshotsLiveStores {
+            return try withSnapshot { try $0.messageConversations(limit: limit) }
+        }
         if try tableExists("message_conversations") {
             return try query("SELECT chatIdentifier, displayName, participantCount, lastMessageAt, messageCount FROM message_conversations ORDER BY lastMessageAt DESC LIMIT \(bounded(limit, defaultValue: 50, max: 1000));")
         }
         guard try tableExists("chat"), try tableExists("message"), try tableExists("chat_message_join") else {
-            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing message_conversations or chat/message/chat_message_join tables")
+            throw LocalInventoryError.unsupportedSchema(store: reportedStore, detail: "missing message_conversations or chat/message/chat_message_join tables")
         }
         return try query("""
             SELECT
@@ -439,13 +464,18 @@ public struct LocalSQLiteInventoryReader: Sendable {
 
     public func recentMessages(confirmSensitive: Bool, includeBody: Bool, since: String?, limit: Int) throws -> [MessageRecentEntry] {
         guard confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli messages recent") }
+        if snapshotsLiveStores {
+            return try withSnapshot { reader in
+                try reader.recentMessages(confirmSensitive: true, includeBody: includeBody, since: since, limit: limit)
+            }
+        }
         let floor = since ?? ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -86_400))
         let bodyColumn = includeBody ? "body" : "NULL AS body"
         if try tableExists("recent_messages") {
             return try query("SELECT chatIdentifier, sender, sentAt, isFromMe, \(bodyColumn) FROM recent_messages WHERE sentAt >= '\(sqlEscape(floor))' ORDER BY sentAt DESC LIMIT \(bounded(limit, defaultValue: 20, max: 1000));")
         }
         guard try tableExists("message"), try tableExists("chat"), try tableExists("chat_message_join") else {
-            throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "missing recent_messages or message/chat/chat_message_join tables")
+            throw LocalInventoryError.unsupportedSchema(store: reportedStore, detail: "missing recent_messages or message/chat/chat_message_join tables")
         }
         let appleBodyColumn = includeBody ? "m.text" : "NULL AS body"
         let appleFloor = since.flatMap { Int64($0) }
@@ -612,7 +642,12 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     private func query<T: Decodable>(_ sql: String) throws -> [T] {
-        guard FileManager.default.fileExists(atPath: database.path) else { throw LocalInventoryError.missingStore(database.path) }
+        if !snapshotsLiveStores {
+            guard let snapshotWorkspace else { throw LocalInventoryError.sqliteFailure("SQLite snapshot workspace is unavailable") }
+            return try SQLiteSnapshotQueryEngine(source: database, reportedStore: reportedStore)
+                .querySnapshot(database, workspace: snapshotWorkspace, sql: sql)
+        }
+        guard FileManager.default.fileExists(atPath: database.path) else { throw LocalInventoryError.missingStore(reportedStore) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
         process.arguments = ["-readonly", "-json", database.path, sql]
@@ -627,7 +662,7 @@ public struct LocalSQLiteInventoryReader: Sendable {
         let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         guard process.terminationStatus == 0 else {
-            throw sqliteError(from: errorData, store: database.path)
+            throw sqliteError(from: errorData, store: reportedStore)
         }
         if data.isEmpty { return [] }
         return try JSONDecoder().decode([T].self, from: data)
@@ -641,6 +676,12 @@ public struct LocalSQLiteInventoryReader: Sendable {
     private func columnExists(_ table: String, _ column: String) throws -> Bool {
         let rows: [SQLitePragmaColumnRow] = try query("PRAGMA table_info('\(sqlEscape(table))');")
         return rows.contains { $0.name == column }
+    }
+
+    private func withSnapshot<Result>(_ operation: (LocalSQLiteInventoryReader) throws -> Result) throws -> Result {
+        try SQLiteSnapshotQueryEngine(source: database).withSnapshot { snapshot, workspace in
+            try operation(LocalSQLiteInventoryReader(database: snapshot, snapshotsLiveStores: false, reportedStore: reportedStore, snapshotWorkspace: workspace))
+        }
     }
 
     private func contactColumnReference(_ candidates: [String]) -> String {
@@ -795,6 +836,9 @@ func sqliteError(from errorData: Data, store: String) -> LocalInventoryError {
     }
     if lowercased.contains("no such table") || lowercased.contains("no such column") {
         return .unsupportedSchema(store: store, detail: message)
+    }
+    if lowercased.contains("database is locked") || lowercased.contains("database is busy") {
+        return .lockedStore(store)
     }
     if lowercased.contains("file is not a database") || lowercased.contains("file is not in a database") {
         return .unsupportedSchema(store: store, detail: "not a SQLite database")

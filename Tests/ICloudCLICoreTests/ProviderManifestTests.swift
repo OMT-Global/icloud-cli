@@ -19,6 +19,8 @@ import Testing
     ])
     #expect(manifest.providers.allSatisfy { !$0.commands.isEmpty && !$0.capabilities.isEmpty })
     #expect(manifest.providers.allSatisfy { $0.accessMode == .readOnly })
+    #expect(manifest.providers.first { $0.id == "messages" }?.capabilities.contains("consistent-snapshot") == true)
+    #expect(manifest.providers.first { $0.id == "safari" }?.capabilities.contains("consistent-snapshot") == true)
 }
 
 @Test func providerManifestJSONContainsMetadataOnly() throws {

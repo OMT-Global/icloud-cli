@@ -116,6 +116,8 @@ The second inventory wave adds local-only command trees for `account status`, `b
 
 These commands use preference/plist readers for account, backup, Family Sharing, permissions, and snapshot status, plus best-effort SQLite metadata readers for Apple private cache stores when a stable local table shape is known or supplied by fixtures. All adapters are read-only and local-only. They do not refresh iCloud, contact Apple services, control apps, trigger HomeKit accessories, execute shortcuts, read audio/photo/book/media payloads, or emit auth tokens. Private Apple schemas can vary across macOS releases, so commands fail closed when expected local tables are absent.
 
+Messages and Safari history queries first copy the database and present WAL/SHM companions into a private temporary directory, query that copy in read-only/query-only mode with bounded busy and process timeouts, and delete it deterministically. See [sqlite-snapshots.md](sqlite-snapshots.md) for the migration and cleanup contract.
+
 High-sensitivity gates:
 
 - `icloud-cli safari cloud-tabs list`, `icloud-cli mail recent`, and `icloud-cli health summary` require `--confirm-sensitive`.
