@@ -70,7 +70,16 @@ public struct HandoffActivity: Codable, Equatable, Sendable {
 
 public enum HandoffError: Error, LocalizedError, Equatable {
     case unreadable(String)
-    public var errorDescription: String? { if case .unreadable(let path) = self { return "Handoff cache directory is unreadable: \(path)" }; return nil }
+    case unparseable(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unreadable(let path):
+            return "Handoff cache directory is unreadable: \(path)"
+        case .unparseable(let path):
+            return "Handoff cache contains JSON or plist files, but none could be parsed: \(path)"
+        }
+    }
 }
 
 private struct HandoffActivitiesEnvelope: Codable { let activities: [HandoffActivity] }
@@ -82,14 +91,23 @@ public struct HandoffActivityReader: Sendable {
     public func listActivities(limit: Int = 10) throws -> [HandoffActivity] {
         guard let enumerator = FileManager.default.enumerator(at: handoffDirectory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { throw HandoffError.unreadable(handoffDirectory.path) }
         var activities: [HandoffActivity] = []
+        var candidateFileCount = 0
+        var parsedFileCount = 0
         for case let url as URL in enumerator where ["json", "plist"].contains(url.pathExtension) {
-            activities.append(contentsOf: readActivities(from: url))
+            candidateFileCount += 1
+            if let parsedActivities = readActivities(from: url) {
+                parsedFileCount += 1
+                activities.append(contentsOf: parsedActivities)
+            }
+        }
+        if candidateFileCount > 0, parsedFileCount == 0 {
+            throw HandoffError.unparseable(handoffDirectory.path)
         }
         return Array(activities.sorted { $0.updatedAt > $1.updatedAt }.prefix(max(0, limit)))
     }
 
-    private func readActivities(from url: URL) -> [HandoffActivity] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
+    private func readActivities(from url: URL) -> [HandoffActivity]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
         if url.pathExtension == "json" {
             let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
             if let wrapped = try? decoder.decode(HandoffActivitiesEnvelope.self, from: data) { return wrapped.activities }
@@ -97,11 +115,15 @@ public struct HandoffActivityReader: Sendable {
             if let object = try? JSONSerialization.jsonObject(with: data) { return parseActivities(object) }
         }
         if let object = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) { return parseActivities(object) }
-        return []
+        return nil
     }
 
-    private func parseActivities(_ value: Any) -> [HandoffActivity] {
-        if let array = value as? [Any] { return array.flatMap(parseActivities) }
+    private func parseActivities(_ value: Any) -> [HandoffActivity]? {
+        if let array = value as? [Any] {
+            if array.isEmpty { return [] }
+            let parsed = array.compactMap(parseActivities).flatMap { $0 }
+            return parsed.isEmpty ? nil : parsed
+        }
         if let dict = value as? NSDictionary {
             var swiftDict: [String: Any] = [:]
             for (key, child) in dict { if let key = key as? String { swiftDict[key] = child } }
@@ -113,10 +135,10 @@ public struct HandoffActivityReader: Sendable {
                   let bundle = stringValue(dict["appBundleId"] ?? dict["bundleIdentifier"] ?? dict["bundleId"]),
                   let app = stringValue(dict["appName"] ?? dict["localizedAppName"]),
                   let type = stringValue(dict["activityType"] ?? dict["type"]),
-                  let updated = dateValue(dict["updatedAt"] ?? dict["lastUpdated"] ?? dict["timestamp"]) else { return [] }
+                  let updated = dateValue(dict["updatedAt"] ?? dict["lastUpdated"] ?? dict["timestamp"]) else { return nil }
             return [HandoffActivity(deviceName: device, appBundleId: bundle, appName: app, activityType: type, title: stringValue(dict["title"]), url: stringValue(dict["url"]), updatedAt: updated)]
         }
-        return []
+        return nil
     }
 }
 

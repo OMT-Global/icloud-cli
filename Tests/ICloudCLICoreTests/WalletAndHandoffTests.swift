@@ -28,6 +28,32 @@ private let fixtures = URL(fileURLWithPath: #filePath)
     #expect(activities[0].appBundleId == "com.apple.mobilesafari")
 }
 
+@Test func reportsMalformedHandoffJSON() {
+    let directory = fixtures.appendingPathComponent("HandoffMalformedJSON")
+    #expect(throws: HandoffError.unparseable(directory.path)) {
+        try HandoffActivityReader(handoffDirectory: directory).listActivities()
+    }
+}
+
+@Test func reportsMalformedHandoffPlist() {
+    let directory = fixtures.appendingPathComponent("HandoffMalformedPlist")
+    #expect(throws: HandoffError.unparseable(directory.path)) {
+        try HandoffActivityReader(handoffDirectory: directory).listActivities()
+    }
+}
+
+@Test func validEmptyHandoffCacheRemainsEmpty() throws {
+    let directory = fixtures.appendingPathComponent("HandoffEmpty")
+    #expect(try HandoffActivityReader(handoffDirectory: directory).listActivities().isEmpty)
+}
+
+@Test func validHandoffActivitySurvivesMalformedNeighbor() throws {
+    let directory = fixtures.appendingPathComponent("HandoffMixed")
+    let activities = try HandoffActivityReader(handoffDirectory: directory).listActivities()
+    #expect(activities.count == 1)
+    #expect(activities[0].deviceName == "Example Mac")
+}
+
 @Test func rendersWalletAndHandoffText() throws {
     let runner = CommandRunner()
     let pass = WalletPass(passType: .eventTicket, description: "Synthetic Event", organizationName: "Example Venue", relevantDate: nil, expirationDate: nil, serialNumber: "SERIAL")
