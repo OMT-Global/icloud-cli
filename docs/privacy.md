@@ -112,6 +112,8 @@ The Photos, Notes, Reminders, Safari history, Messages, Contacts, Maps, and News
 
 `icloud-cli watch` defaults to lower-risk polling commands only: `safari-tabs`, `drive-list`, `photos-screenshots`, and `storage-status`. Operators may add commands explicitly, but high-sensitivity commands such as Safari history, Messages, and Contacts are intentionally excluded from the default cache refresh set.
 
+Federated `search` reads only local opted-in provider archives and preserves provider-native identifiers. High-sensitivity providers require `--include-sensitive`; body indexing additionally requires `--include-bodies --confirm-sensitive`. It does not construct cross-provider identities. See [federated-search.md](federated-search.md).
+
 
 ## Broad Local Metadata Commands
 

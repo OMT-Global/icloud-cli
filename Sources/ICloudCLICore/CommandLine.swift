@@ -1548,6 +1548,7 @@ Usage:
   icloud-cli archive status PROVIDER [--archive-dir PATH] [--format json|text]
   icloud-cli providers list [--format json|text]
   icloud-cli providers external-manifest [--format json|text]
+  icloud-cli search QUERY [--provider ID] [--since ISO8601] [--until ISO8601] [--cursor CURSOR] [--limit N] [--include-sensitive] [--include-bodies --confirm-sensitive] [--archive-dir PATH] [--format json|text]
   icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
   icloud-cli account status [--format json|text] [--cache-file PATH]
   icloud-cli backup status [--format json|text] [--cache-file PATH]
@@ -1615,6 +1616,7 @@ Commands:
   archive        Incrementally sync and inspect private per-provider metadata archives.
   providers list List the versioned, machine-readable provider capability manifest.
   providers external-manifest Emit the local OpenClaw control-plane contract.
+  search         Search opted-in local provider archives without merging identities.
   snapshot       Emit a conservative redacted operator status payload.
   account status
                  Report iCloud sign-in and service enablement from local preferences.
