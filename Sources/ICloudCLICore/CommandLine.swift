@@ -679,7 +679,6 @@ public struct CLIParser: Sendable {
         }
         if topCommand == "providers" {
             guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("providers") }
-            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["providers"] + tokens).joined(separator: " ")) }
             tokens.removeFirst()
             var format = OutputFormat.json
             var index = 0
@@ -694,7 +693,6 @@ public struct CLIParser: Sendable {
             case "external-manifest": return .providersExternalManifest(format)
             default: throw CLIParseError.unknownCommand((["providers", subcommand] + tokens).joined(separator: " "))
             }
-            return .providersList(format)
         }
         if topCommand == "search" {
             guard let query = tokens.first else { throw CLIParseError.missingValue("query") }
