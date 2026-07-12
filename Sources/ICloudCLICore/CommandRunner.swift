@@ -52,8 +52,8 @@ public struct CommandRunner: Sendable {
                 output(try render(containers, format: options.format))
                 return 0
             case .driveList(let options):
-                let files = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listFiles(path: options.path, depth: options.depth)
-                output(try render(files, format: options.format))
+                let report = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listFilesReport(path: options.path, depth: options.depth, budget: options.budget)
+                output(try render(report, format: options.format))
                 return 0
             case .focusStatus(let options):
                 let status = try FocusStatusReader(focusDirectory: options.focusDirectory).readStatus()
@@ -153,7 +153,7 @@ public struct CommandRunner: Sendable {
             case .watch(let options):
                 let store = CacheWatchStore(outputDirectory: options.outputDirectory)
                 repeat {
-                    let status = try store.refresh(commands: options.commands)
+                    let status = try store.refresh(commands: options.commands, budget: options.budget)
                     output(try render(status, format: .json))
                     if options.once { break }
                     Thread.sleep(forTimeInterval: TimeInterval(options.intervalSeconds))
@@ -201,23 +201,24 @@ public struct CommandRunner: Sendable {
             return rendered
         case .driveStatus:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.syncStatus(path: options.path, limit: options.driveStatusLimit), format: options.format)
+            let budget = options.driveStatusLimit.map { CrawlBudget(scanLimit: $0, wallClockLimitMilliseconds: options.crawlBudget.wallClockLimitMilliseconds) } ?? options.crawlBudget
+            return try render(try reader.syncStatusReport(path: options.path, budget: budget), format: options.format)
         case .driveErrors:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.errorFiles(path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.errorFilesReport(path: options.path, limit: options.limit, budget: options.crawlBudget), format: options.format)
         case .driveShared:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.sharedItems(path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.sharedItemsReport(path: options.path, limit: options.limit, budget: options.crawlBudget), format: options.format)
         case .driveRecents:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.recentFiles(since: options.since, limit: options.limit), format: options.format)
+            return try render(try reader.recentFilesReport(since: options.since, limit: options.limit, budget: options.crawlBudget), format: options.format)
         case .tagsList:
             let reader = FinderTagsReader(preferencesFile: options.store ?? FinderTagsStoreResolver().resolvedPreferencesFile(), driveRoot: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
             return try render(try reader.listTags(), format: options.format)
         case .taggedItems:
             guard let tag = options.tag else { throw CLIParseError.missingValue("--tag") }
             let reader = FinderTagsReader(preferencesFile: options.store ?? FinderTagsStoreResolver().resolvedPreferencesFile(), driveRoot: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.items(tag: tag, path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.itemsReport(tag: tag, path: options.path, limit: options.limit, budget: options.crawlBudget), format: options.format)
         default:
             let store = options.store ?? LocalMetadataStoreReader.defaultStore(for: command)
             let rows = try LocalMetadataStoreReader(database: store).rows(for: command, options: options)

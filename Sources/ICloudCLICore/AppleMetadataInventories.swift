@@ -1173,11 +1173,29 @@ public struct FinderTagsReader: Sendable {
 
     public func items(tag: String, path: String?, limit: Int) throws -> [TaggedDriveItem] {
         let scanLimit = max(200, bounded(limit, defaultValue: 50, max: 1_000) * 5)
-        let files = try ICloudDriveInventoryReader(rootDirectory: driveRoot).listFiles(path: path, depth: Int.max, limit: scanLimit)
-        return files
-            .filter { $0.name.localizedCaseInsensitiveContains(tag) || $0.path.localizedCaseInsensitiveContains(".\(tag).") }
-            .prefix(max(1, limit))
+        let budget = CrawlBudget(scanLimit: scanLimit, wallClockLimitMilliseconds: CrawlBudget.defaultDrive.wallClockLimitMilliseconds)
+        return try itemsReport(tag: tag, path: path, limit: limit, budget: budget).data
+    }
+
+    public func itemsReport(tag: String, path: String?, limit: Int, budget: CrawlBudget = .defaultDrive) throws -> CrawlReport<[TaggedDriveItem]> {
+        let crawl = try ICloudDriveInventoryReader(rootDirectory: driveRoot).listFilesReport(path: path, depth: Int.max, budget: budget)
+        let resultLimit = max(1, limit)
+        let matches = crawl.data.filter { $0.name.localizedCaseInsensitiveContains(tag) || $0.path.localizedCaseInsensitiveContains(".\(tag).") }
+        let items = matches
+            .prefix(resultLimit)
             .map { TaggedDriveItem(path: $0.path, modifiedAt: $0.modifiedAt, iCloudStatus: $0.iCloudStatus) }
+        return CrawlReport(
+            providerId: "tags",
+            state: crawl.state,
+            data: items,
+            scannedCount: crawl.scannedCount,
+            resultCount: items.count,
+            totalAvailable: crawl.state == .complete ? matches.count : nil,
+            budget: budget,
+            resultLimit: resultLimit,
+            elapsedMilliseconds: crawl.elapsedMilliseconds,
+            nextAction: crawl.nextAction
+        )
     }
 }
 

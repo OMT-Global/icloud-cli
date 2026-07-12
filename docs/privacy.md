@@ -118,6 +118,8 @@ These commands use preference/plist readers for account, backup, Family Sharing,
 
 Messages and Safari history queries first copy the database and present WAL/SHM companions into a private temporary directory, query that copy in read-only/query-only mode with bounded busy and process timeouts, and delete it deterministically. See [sqlite-snapshots.md](sqlite-snapshots.md) for the migration and cleanup contract.
 
+Recursive Drive and Finder-tag crawls use explicit scan and wall-clock budgets and return structured partial/timeout metadata rather than hanging. Polling records only redacted failure codes and guidance when a crawl cannot finish. See [crawl-budgets.md](crawl-budgets.md) for the output contract.
+
 High-sensitivity gates:
 
 - `icloud-cli safari cloud-tabs list`, `icloud-cli mail recent`, and `icloud-cli health summary` require `--confirm-sensitive`.
