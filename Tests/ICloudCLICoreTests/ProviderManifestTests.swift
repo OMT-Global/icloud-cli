@@ -19,6 +19,11 @@ import Testing
     ])
     #expect(manifest.providers.allSatisfy { !$0.commands.isEmpty && !$0.capabilities.isEmpty })
     #expect(manifest.providers.allSatisfy { $0.accessMode == .readOnly })
+    let reminders = manifest.providers.first { $0.id == "reminders" }
+    #expect(reminders?.sourceKind == .mixed)
+    #expect(reminders?.commands.contains("reminders authorization") == true)
+    #expect(reminders?.capabilities.contains("eventkit-primary") == true)
+    #expect(reminders?.permissionExpectations == ["eventkit-reminders-read", "full-disk-access-only-for-explicit-degraded-fallback"])
 }
 
 @Test func providerManifestJSONContainsMetadataOnly() throws {

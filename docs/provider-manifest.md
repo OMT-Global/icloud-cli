@@ -26,6 +26,8 @@ Each provider declares:
 
 The registry is static: it contains no payload records, account identifiers, user paths, permission probes, or other machine-local state. `--format text` renders the same fields for operators.
 
+Provider-specific permission expectations may replace the generic source-kind default. Reminders declares EventKit authorization for its primary reads and Full Disk Access only for its explicit degraded private-store fallback.
+
 ## Compatibility policy
 
 Within `icloud-cli.providers.v1`, provider `id` values and existing field meanings are stable. New providers, commands, capabilities, maturity values, and optional fields may be added without changing the schema version. Consumers must ignore unknown fields and enum values and must not rely on array position beyond the documented deterministic ordering.

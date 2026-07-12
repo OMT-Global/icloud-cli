@@ -154,6 +154,16 @@ public struct ReminderEntry: Codable, Equatable, Sendable {
         case title, listName, dueAt, isCompleted, priority, notes, createdAt
     }
 
+    public init(title: String, listName: String, dueAt: String?, isCompleted: Bool, priority: Int, notes: String?, createdAt: String?) {
+        self.title = title
+        self.listName = listName
+        self.dueAt = dueAt
+        self.isCompleted = isCompleted
+        self.priority = priority
+        self.notes = notes
+        self.createdAt = createdAt
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         title = try container.decode(String.self, forKey: .title)
@@ -169,6 +179,11 @@ public struct ReminderEntry: Codable, Equatable, Sendable {
 public struct ReminderListSummary: Codable, Equatable, Sendable {
     public let name: String
     public let itemCount: Int
+
+    public init(name: String, itemCount: Int) {
+        self.name = name
+        self.itemCount = itemCount
+    }
 }
 
 public struct SafariHistoryEntry: Codable, Equatable, Sendable {

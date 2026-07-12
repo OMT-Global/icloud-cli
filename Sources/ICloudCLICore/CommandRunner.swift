@@ -2,15 +2,18 @@ import Foundation
 
 public struct CommandRunner: Sendable {
     private let parser: CLIParser
+    private let remindersClient: any ReminderEventKitClient
     private let output: @Sendable (String) -> Void
     private let errorOutput: @Sendable (String) -> Void
 
     public init(
         parser: CLIParser = CLIParser(),
+        remindersClient: any ReminderEventKitClient = SystemReminderEventKitClient(),
         output: @escaping @Sendable (String) -> Void = { print($0) },
         errorOutput: @escaping @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
     ) {
         self.parser = parser
+        self.remindersClient = remindersClient
         self.output = output
         self.errorOutput = errorOutput
     }
@@ -106,12 +109,23 @@ public struct CommandRunner: Sendable {
                 output(try render(ProviderRegistry.manifest, format: format))
                 return 0
             case .remindersList(let options):
-                let reminders = try LocalSQLiteInventoryReader(database: options.store).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted)
+                let reminders = if options.degradedPrivateStore {
+                    try LocalSQLiteInventoryReader(database: options.store).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted)
+                } else {
+                    try EventKitRemindersProvider(client: remindersClient).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted, limit: options.limit)
+                }
                 output(try render(reminders, format: options.format))
                 return 0
             case .remindersLists(let options):
-                let lists = try LocalSQLiteInventoryReader(database: options.store).reminderLists()
+                let lists = if options.degradedPrivateStore {
+                    try LocalSQLiteInventoryReader(database: options.store).reminderLists()
+                } else {
+                    try EventKitRemindersProvider(client: remindersClient).lists(limit: options.limit)
+                }
                 output(try render(lists, format: options.format))
+                return 0
+            case .remindersAuthorization(let format):
+                output(try render(EventKitRemindersProvider(client: remindersClient).authorization(), format: format))
                 return 0
             case .safariBookmarks(let options):
                 let directory = SafariProfileDirectoryResolver().directory(baseDirectory: options.safariDirectory, profile: options.profile)
