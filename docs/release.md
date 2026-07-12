@@ -23,3 +23,5 @@ Local verification found `Developer ID Application: John TenEyck (TFGKTMNSZV)`, 
 Branch protection currently enforces `CI Gate`, one CODEOWNER approval, stale-review dismissal, last-push approval, and administrators. Secret scanning, push protection, validity checks, and Dependabot security updates currently report disabled through the GitHub API. Enable secret scanning, push protection, validity checks, and Dependabot security updates before adding release credentials. If the API or organization plan rejects them, record the exact response on issue #98 and retain the existing repository secret-pattern gate; do not weaken release environment approval.
 
 No daemon or privileged helper is introduced for signing. The executable's stable identity and install path solve this release requirement independently of the execution-model decision in issue #83.
+
+The proposed [execution-model ADR](adr/001-execution-model.md) keeps this signed executable as the only required product. Any future helper needs its own stable identity and permission-continuity validation; it cannot inherit this binary's release evidence.
