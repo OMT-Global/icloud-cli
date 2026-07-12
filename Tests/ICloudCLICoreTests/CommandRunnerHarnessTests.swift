@@ -128,7 +128,7 @@ import Testing
     #expect(FileManager.default.fileExists(atPath: snapshotOutput.path))
     #expect(sink.errors.isEmpty)
     #expect(sink.output.count == commands.count)
-    #expect(sink.output.last?.contains("Unsupported cache command: unknown-command") == true)
+    #expect(sink.output.last?.contains("provider crawl failed") == true)
 }
 
 @Test func driveStatusCommandHonorsExplicitTraversalLimit() throws {
@@ -148,7 +148,7 @@ import Testing
     #expect(runner.run(arguments: ["icloud-cli", "drive", "status", "--icloud-root", driveRoot.path, "--limit", "1"]) == 0)
 
     let output = try #require(sink.output.first)
-    let summary = try JSONDecoder().decode(ICloudDriveSyncSummary.self, from: Data(output.utf8))
+    let summary = try JSONDecoder().decode(CrawlReport<ICloudDriveSyncSummary>.self, from: Data(output.utf8)).data
     #expect(summary.downloadedCount + summary.cloudOnlyCount + summary.downloadingCount + summary.uploadedCount + summary.uploadingCount + summary.errorCount + summary.unknownCount == 1)
 }
 
@@ -197,8 +197,8 @@ import Testing
     #expect(sink.output.count == 2)
 
     let decoder = JSONDecoder()
-    let full = try decoder.decode(ICloudDriveSyncSummary.self, from: Data(sink.output[0].utf8))
-    let capped = try decoder.decode(ICloudDriveSyncSummary.self, from: Data(sink.output[1].utf8))
+    let full = try decoder.decode(CrawlReport<ICloudDriveSyncSummary>.self, from: Data(sink.output[0].utf8)).data
+    let capped = try decoder.decode(CrawlReport<ICloudDriveSyncSummary>.self, from: Data(sink.output[1].utf8)).data
 
     #expect(full.downloadedCount + full.cloudOnlyCount + full.downloadingCount + full.uploadedCount + full.uploadingCount + full.errorCount + full.unknownCount == 2)
     #expect(capped.downloadedCount + capped.cloudOnlyCount + capped.downloadingCount + capped.uploadedCount + capped.uploadingCount + capped.errorCount + capped.unknownCount == 1)

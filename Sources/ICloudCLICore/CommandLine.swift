@@ -51,13 +51,15 @@ public struct DriveListOptions: Equatable, Sendable {
     public var path: String?
     public var depth: Int
     public var showStatus: Bool
+    public var budget: CrawlBudget
 
-    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2, showStatus: Bool = false) {
+    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2, showStatus: Bool = false, budget: CrawlBudget = .defaultDrive) {
         self.format = format
         self.rootDirectory = rootDirectory
         self.path = path
         self.depth = depth
         self.showStatus = showStatus
+        self.budget = budget
     }
 }
 
@@ -298,12 +300,14 @@ public struct WatchOptions: Equatable, Sendable {
     public var outputDirectory: URL
     public var commands: [String]
     public var once: Bool
+    public var budget: CrawlBudget
 
-    public init(intervalSeconds: Int = 60, outputDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/cache"), commands: [String] = CacheWatchStore.defaultCommands, once: Bool = false) {
+    public init(intervalSeconds: Int = 60, outputDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/cache"), commands: [String] = CacheWatchStore.defaultCommands, once: Bool = false, budget: CrawlBudget = .defaultPolling) {
         self.intervalSeconds = intervalSeconds
         self.outputDirectory = outputDirectory
         self.commands = commands
         self.once = once
+        self.budget = budget
     }
 }
 
@@ -449,6 +453,7 @@ public struct MetadataOptions: Equatable, Sendable {
     public var raw: Bool
     public var downloadedOnly: Bool
     public var cloudOnly: Bool
+    public var crawlBudget: CrawlBudget
 
     public init(
         format: OutputFormat = .json,
@@ -481,7 +486,8 @@ public struct MetadataOptions: Equatable, Sendable {
         includeURLs: Bool = false,
         raw: Bool = false,
         downloadedOnly: Bool = false,
-        cloudOnly: Bool = false
+        cloudOnly: Bool = false,
+        crawlBudget: CrawlBudget = .defaultDrive
     ) {
         self.format = format
         self.store = store
@@ -514,6 +520,7 @@ public struct MetadataOptions: Equatable, Sendable {
         self.raw = raw
         self.downloadedOnly = downloadedOnly
         self.cloudOnly = cloudOnly
+        self.crawlBudget = crawlBudget
     }
 }
 
@@ -940,6 +947,10 @@ public struct CLIParser: Sendable {
             case "--icloud-root": options.rootDirectory = try parseURL(after: token, in: tokens, at: &index)
             case "--path": options.path = try value(after: token, in: tokens, at: &index)
             case "--show-status": options.showStatus = true
+            case "--scan-limit":
+                options.budget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: options.budget.wallClockLimitMilliseconds)
+            case "--timeout-ms":
+                options.budget = CrawlBudget(scanLimit: options.budget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
             case "--depth":
                 let rawValue = try value(after: token, in: tokens, at: &index)
                 guard let depth = Int(rawValue), depth >= 0 else { throw CLIParseError.missingValue(token) }
@@ -1264,6 +1275,10 @@ public struct CLIParser: Sendable {
                     .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             case "--once": options.once = true
+            case "--scan-limit":
+                options.budget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: options.budget.wallClockLimitMilliseconds)
+            case "--timeout-ms":
+                options.budget = CrawlBudget(scanLimit: options.budget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1334,6 +1349,10 @@ public struct CLIParser: Sendable {
                 let limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
                 options.limit = limit
                 options.driveStatusLimit = limit
+            case "--scan-limit":
+                options.crawlBudget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: options.crawlBudget.wallClockLimitMilliseconds)
+            case "--timeout-ms":
+                options.crawlBudget = CrawlBudget(scanLimit: options.crawlBudget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
             case "--confirm-sensitive": options.confirmSensitive = true
             case "--include-attendees": options.includeAttendees = true
             case "--include-coordinates": options.includeCoordinates = true
@@ -1354,6 +1373,12 @@ public struct CLIParser: Sendable {
         let rawValue = try value(after: option, in: tokens, at: &index)
         guard let format = OutputFormat(rawValue: rawValue) else { throw CLIParseError.invalidFormat(rawValue) }
         return format
+    }
+
+    private func positiveInteger(after option: String, in tokens: [String], at index: inout Int) throws -> Int {
+        let rawValue = try value(after: option, in: tokens, at: &index)
+        guard let value = Int(rawValue), value > 0 else { throw CLIParseError.missingValue(option) }
+        return value
     }
 
     private func parseURL(after option: String, in tokens: [String], at index: inout Int) throws -> URL {
@@ -1388,12 +1413,12 @@ Usage:
   icloud-cli devices list [--format json|text] [--cache-file PATH]
   icloud-cli wallet passes [--type PASS_TYPE] [--active-only] [--format json|text] [--passes-dir PATH]
   icloud-cli handoff list [--limit N] [--format json|text] [--handoff-dir PATH]
-  icloud-cli drive list [--path PATH] [--depth N] [--show-status] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive list [--path PATH] [--depth N] [--scan-limit N] [--timeout-ms N] [--show-status] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive status [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive errors [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive shared [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive recents [--since ISO8601] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive status [--path PATH] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive errors [--path PATH] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive shared [--path PATH] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive recents [--since ISO8601] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
   icloud-cli photos list [--limit N] [--format json|text] [--photos-library PATH]
@@ -1425,9 +1450,9 @@ Usage:
   icloud-cli stocks watchlist|groups [--format json|text] [--stocks-store PATH]
   icloud-cli weather favorites [--include-coordinates] [--format json|text] [--weather-store PATH]
   icloud-cli tags list [--format json|text] [--store PATH]
-  icloud-cli tags items --tag NAME [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli tags items --tag NAME [--path PATH] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
   icloud-cli permissions doctor [--format json|text]
-  icloud-cli watch [--interval SECONDS] [--output-dir PATH] [--commands COMMAND,...] [--once]
+  icloud-cli watch [--interval SECONDS] [--scan-limit N] [--timeout-ms N] [--output-dir PATH] [--commands COMMAND,...] [--once]
   icloud-cli cache read COMMAND [--format json|text] [--output-dir PATH]
   icloud-cli cache status [--format json|text] [--output-dir PATH]
   icloud-cli safari tabs [--source all|current-session|last-session] [--profile NAME|all] [--format json|text] [--safari-dir PATH]

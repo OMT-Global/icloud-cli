@@ -28,6 +28,8 @@ import Testing
     #expect(reminders?.permissionExpectations == ["eventkit-reminders-read", "full-disk-access-only-for-explicit-degraded-fallback"])
     #expect(manifest.providers.first { $0.id == "messages" }?.capabilities.contains("consistent-snapshot") == true)
     #expect(manifest.providers.first { $0.id == "safari" }?.capabilities.contains("consistent-snapshot") == true)
+    #expect(manifest.providers.first { $0.id == "drive" }?.capabilities.contains("bounded-crawl") == true)
+    #expect(manifest.providers.first { $0.id == "tags" }?.capabilities.contains("bounded-crawl") == true)
 }
 
 @Test func providerManifestJSONContainsMetadataOnly() throws {
