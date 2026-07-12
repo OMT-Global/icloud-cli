@@ -26,6 +26,10 @@ Each provider declares:
 
 The registry is static: it contains no payload records, account identifiers, user paths, permission probes, or other machine-local state. `--format text` renders the same fields for operators.
 
+## External control-plane projection
+
+`icloud-cli providers external-manifest --format json` embeds this exact registry in the `providerManifest` field of `icloud-cli.openclaw.external.v1`. The projection adds action-class policy only; it does not repeat per-provider command metadata. See [the OpenClaw control-plane contract](openclaw-skill-contract.md) for wrapper, confirmation, redaction, timeout, retention, and structured-error requirements.
+
 ## Compatibility policy
 
 Within `icloud-cli.providers.v1`, provider `id` values and existing field meanings are stable. New providers, commands, capabilities, maturity values, and optional fields may be added without changing the schema version. Consumers must ignore unknown fields and enum values and must not rely on array position beyond the documented deterministic ordering.

@@ -533,6 +533,7 @@ public enum CLICommand: Equatable, Sendable {
     case notesList(NotesListOptions)
     case photosList(PhotosListOptions)
     case photosScreenshots(PhotosScreenshotsOptions)
+    case providersExternalManifest(OutputFormat)
     case providersList(OutputFormat)
     case remindersList(RemindersListOptions)
     case remindersLists(RemindersListOptions)
@@ -577,7 +578,7 @@ public struct CLIParser: Sendable {
 
         let topCommand = tokens.removeFirst()
         if topCommand == "providers" {
-            guard tokens.first == "list" else { throw CLIParseError.unknownCommand((["providers"] + tokens).joined(separator: " ")) }
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("providers") }
             tokens.removeFirst()
             var format = OutputFormat.json
             var index = 0
@@ -587,7 +588,11 @@ public struct CLIParser: Sendable {
                 format = try parseFormat(after: token, in: tokens, at: &index)
                 index += 1
             }
-            return .providersList(format)
+            switch subcommand {
+            case "list": return .providersList(format)
+            case "external-manifest": return .providersExternalManifest(format)
+            default: throw CLIParseError.unknownCommand((["providers", subcommand] + tokens).joined(separator: " "))
+            }
         }
         if topCommand == "snapshot" {
             return .metadata(.snapshot, try parseMetadataOptions(tokens))
@@ -1341,6 +1346,7 @@ Created by OMT-Global.
 
 Usage:
   icloud-cli providers list [--format json|text]
+  icloud-cli providers external-manifest [--format json|text]
   icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
   icloud-cli account status [--format json|text] [--cache-file PATH]
   icloud-cli backup status [--format json|text] [--cache-file PATH]
@@ -1403,6 +1409,7 @@ Usage:
 
 Commands:
   providers list List the versioned, machine-readable provider capability manifest.
+  providers external-manifest Emit the local OpenClaw control-plane contract.
   snapshot       Emit a conservative redacted operator status payload.
   account status
                  Report iCloud sign-in and service enablement from local preferences.
