@@ -71,6 +71,36 @@ public struct ArchiveSyncBatch: Codable, Equatable, Sendable {
     public let records: [ArchiveInputRecord]
     public let deletedIds: [String]
     public let failure: ArchiveFailure?
+    public let sensitiveFields: [String]?
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, providerId, providerSchemaVersion, sourceFingerprint, cursor, records, deletedIds, failure
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try values.decode(String.self, forKey: .schemaVersion)
+        providerId = try values.decode(String.self, forKey: .providerId)
+        providerSchemaVersion = try values.decode(String.self, forKey: .providerSchemaVersion)
+        sourceFingerprint = try values.decode(String.self, forKey: .sourceFingerprint)
+        cursor = try values.decodeIfPresent(String.self, forKey: .cursor)
+        records = try values.decode([ArchiveInputRecord].self, forKey: .records)
+        deletedIds = try values.decode([String].self, forKey: .deletedIds)
+        failure = try values.decodeIfPresent(ArchiveFailure.self, forKey: .failure)
+        sensitiveFields = nil
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(schemaVersion, forKey: .schemaVersion)
+        try values.encode(providerId, forKey: .providerId)
+        try values.encode(providerSchemaVersion, forKey: .providerSchemaVersion)
+        try values.encode(sourceFingerprint, forKey: .sourceFingerprint)
+        try values.encodeIfPresent(cursor, forKey: .cursor)
+        try values.encode(records, forKey: .records)
+        try values.encode(deletedIds, forKey: .deletedIds)
+        try values.encodeIfPresent(failure, forKey: .failure)
+    }
 
     public init(
         schemaVersion: String,
@@ -80,7 +110,8 @@ public struct ArchiveSyncBatch: Codable, Equatable, Sendable {
         cursor: String?,
         records: [ArchiveInputRecord],
         deletedIds: [String],
-        failure: ArchiveFailure?
+        failure: ArchiveFailure?,
+        sensitiveFields: [String]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.providerId = providerId
@@ -90,6 +121,7 @@ public struct ArchiveSyncBatch: Codable, Equatable, Sendable {
         self.records = records
         self.deletedIds = deletedIds
         self.failure = failure
+        self.sensitiveFields = sensitiveFields
     }
 }
 
@@ -309,8 +341,9 @@ public struct ProviderArchiveStore: Sendable {
         guard ProviderRegistry.manifest.providers.first(where: { $0.id == batch.providerId })?.capabilities.contains("archive-metadata") == true else {
             throw ProviderArchiveError.providerNotArchivable(batch.providerId)
         }
+        let approvedSensitive = Set(batch.sensitiveFields ?? [])
         for record in batch.records {
-            if let field = sensitiveField(in: record.fields) { throw ProviderArchiveError.sensitiveField(field) }
+            if let field = sensitiveField(in: record.fields), !(batch.providerId == "messages" && approvedSensitive.contains(field)) { throw ProviderArchiveError.sensitiveField(field) }
         }
     }
 

@@ -94,6 +94,15 @@ public struct CommandRunner: Sendable {
                 let messages = try LocalSQLiteInventoryReader(database: options.chatDatabase).recentMessages(confirmSensitive: options.confirmSensitive, includeBody: options.includeBody, since: options.since, limit: options.limit)
                 output(try render(messages, format: options.format))
                 return 0
+            case .messagesArchive(let options):
+                guard options.confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli messages archive") }
+                let result = try MessagesArchiveAdapter(archiveDirectory: options.archiveDirectory).sync(database: options.chatDatabase, includeBodies: options.includeBody, bodyRetentionDays: options.bodyRetentionDays, limit: options.limit)
+                output(try render(result, format: options.format))
+                return 0
+            case .messagesSearch(let options):
+                let hits = try MessagesArchiveAdapter(archiveDirectory: options.archiveDirectory).search(query: options.query, includeBodies: options.includeBody, confirmSensitive: options.confirmSensitive, limit: options.limit)
+                output(try render(hits, format: options.format))
+                return 0
             case .metadata(let command, let options):
                 output(try runMetadata(command: command, options: options))
                 return 0

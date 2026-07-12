@@ -110,9 +110,9 @@ import Testing
     let root = try archiveTestDirectory(named: "sensitive")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = ProviderArchiveStore(rootDirectory: root)
-    let batch = ArchiveSyncBatch(schemaVersion: "icloud-cli.archive-sync.v1", providerId: "messages", providerSchemaVersion: "messages.v1", sourceFingerprint: "source", cursor: nil, records: [], deletedIds: [], failure: nil)
+    let batch = ArchiveSyncBatch(schemaVersion: "icloud-cli.archive-sync.v1", providerId: "contacts", providerSchemaVersion: "contacts.v1", sourceFingerprint: "source", cursor: nil, records: [], deletedIds: [], failure: nil)
 
-    #expect(throws: ProviderArchiveError.providerNotArchivable("messages")) {
+    #expect(throws: ProviderArchiveError.providerNotArchivable("contacts")) {
         try store.sync(batch, budget: .defaultPolling)
     }
 }

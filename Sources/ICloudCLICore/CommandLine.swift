@@ -281,6 +281,27 @@ public struct MessagesOptions: Equatable, Sendable {
     }
 }
 
+public struct MessagesArchiveOptions: Equatable, Sendable {
+    public var format: OutputFormat = .json
+    public var chatDatabase = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Messages/chat.db")
+    public var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+    public var confirmSensitive = false
+    public var includeBody = false
+    public var bodyRetentionDays: Int?
+    public var limit = 1_000
+    public init() {}
+}
+
+public struct MessagesSearchOptions: Equatable, Sendable {
+    public let query: String
+    public var format: OutputFormat = .json
+    public var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+    public var confirmSensitive = false
+    public var includeBody = false
+    public var limit = 50
+    public init(query: String) { self.query = query }
+}
+
 public struct ContactsListOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var addressBookDatabase: URL
@@ -568,6 +589,8 @@ public enum CLICommand: Equatable, Sendable {
     case mapsRecents(MapsOptions)
     case messagesConversations(MessagesOptions)
     case messagesRecent(MessagesOptions)
+    case messagesArchive(MessagesArchiveOptions)
+    case messagesSearch(MessagesSearchOptions)
     case metadata(MetadataCommand, MetadataOptions)
     case newsHistory(NewsOptions)
     case newsTopics(NewsOptions)
@@ -853,8 +876,13 @@ public struct CLIParser: Sendable {
             guard let messagesCommand = tokens.first else { throw CLIParseError.unknownCommand("messages") }
             tokens.removeFirst()
             switch messagesCommand {
+            case "archive": return .messagesArchive(try parseMessagesArchiveOptions(tokens))
             case "conversations": return .messagesConversations(try parseMessagesOptions(tokens))
             case "recent": return .messagesRecent(try parseMessagesOptions(tokens))
+            case "search":
+                guard let query = tokens.first else { throw CLIParseError.missingValue("query") }
+                tokens.removeFirst()
+                return .messagesSearch(try parseMessagesSearchOptions(query: query, tokens: tokens))
             default: throw CLIParseError.unknownCommand((["messages", messagesCommand] + tokens).joined(separator: " "))
             }
         }
@@ -1290,6 +1318,42 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseMessagesArchiveOptions(_ tokens: [String]) throws -> MessagesArchiveOptions {
+        var options = MessagesArchiveOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--chat-db": options.chatDatabase = try parseURL(after: token, in: tokens, at: &index)
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--include-body": options.includeBody = true
+            case "--body-retention-days": options.bodyRetentionDays = Int(try value(after: token, in: tokens, at: &index))
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseMessagesSearchOptions(query: String, tokens: [String]) throws -> MessagesSearchOptions {
+        var options = MessagesSearchOptions(query: query); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--include-body": options.includeBody = true
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseContactsListOptions(_ tokens: [String]) throws -> ContactsListOptions {
         var options = ContactsListOptions(); var index = 0
         while index < tokens.count {
@@ -1517,6 +1581,8 @@ Usage:
   icloud-cli mail recent [--confirm-sensitive] [--account NAME] [--mailbox NAME] [--limit N] [--format json|text] [--mail-store PATH]
   icloud-cli messages conversations [--limit N] [--format json|text] [--chat-db PATH]
   icloud-cli messages recent [--confirm-sensitive] [--include-body] [--since ISO8601] [--limit N] [--format json|text] [--chat-db PATH]
+  icloud-cli messages archive --confirm-sensitive [--include-body --body-retention-days N] [--limit N] [--format json|text] [--chat-db PATH] [--archive-dir PATH]
+  icloud-cli messages search QUERY [--include-body --confirm-sensitive] [--limit N] [--format json|text] [--archive-dir PATH]
   icloud-cli maps favorites [--format json|text] [--maps-store PATH]
   icloud-cli maps recents [--limit N] [--format json|text] [--maps-store PATH]
   icloud-cli news history [--since ISO8601] [--limit N] [--format json|text] [--news-store PATH]
@@ -1577,6 +1643,10 @@ Commands:
                  List message conversation metadata without message bodies.
   messages recent
                  List recent messages only after --confirm-sensitive.
+  messages archive
+                 Incrementally archive bounded message metadata from a consistent snapshot.
+  messages search
+                 Search the local Messages archive; bodies remain separately gated.
   maps favorites List Maps saved-place metadata.
   maps recents   List Maps recent-place metadata.
   news history   List News reading-history metadata.

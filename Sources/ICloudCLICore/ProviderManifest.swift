@@ -48,7 +48,7 @@ public enum ProviderRegistry {
         provider("home", "Home", .beta, .sqlite, .high, ["home accessories", "home homes", "home rooms", "home scenes"], ["accessories", "homes", "rooms", "scenes"]),
         provider("mail", "Mail", .beta, .sqlite, .high, ["mail accounts", "mail mailboxes", "mail recent"], ["accounts", "headers", "mailboxes"]),
         provider("maps", "Maps", .beta, .sqlite, .high, ["maps favorites", "maps recents"], ["favorites", "recents", "location"]),
-        provider("messages", "Messages", .beta, .sqlite, .high, ["messages conversations", "messages recent"], ["consistent-snapshot", "conversations", "messages", "date-filtering"]),
+        provider("messages", "Messages", .beta, .sqlite, .high, ["messages archive", "messages conversations", "messages recent", "messages search"], ["archive-metadata", "consistent-snapshot", "conversations", "date-filtering", "incremental", "messages", "search"]),
         provider("music", "Music", .beta, .sqlite, .moderate, ["music playlists", "music status", "music tracks"], ["inventory", "playlists", "status"]),
         provider("news", "News", .beta, .sqlite, .moderate, ["news history", "news topics"], ["history", "topics", "date-filtering"]),
         provider("notes", "Notes", .beta, .sqlite, .high, ["notes accounts", "notes folders", "notes list", "notes shared", "notes tags"], ["accounts", "folders", "inventory", "sharing", "tags"]),
