@@ -22,6 +22,18 @@ public struct CommandRunner: Sendable {
     public func run(arguments: [String]) -> Int32 {
         do {
             switch try parser.parse(arguments: arguments) {
+            case .archiveSync(let options):
+                let values = try options.input.resourceValues(forKeys: [.fileSizeKey])
+                if let size = values.fileSize, size > 16 * 1_024 * 1_024 { throw ProviderArchiveError.inputTooLarge(Int64(size)) }
+                let batch = try JSONDecoder().decode(ArchiveSyncBatch.self, from: Data(contentsOf: options.input))
+                guard batch.providerId == options.providerId else { throw ProviderArchiveError.providerMismatch(expected: options.providerId, actual: batch.providerId) }
+                let result = try ProviderArchiveStore(rootDirectory: options.archiveDirectory).sync(batch, budget: options.budget)
+                output(try render(result, format: options.format))
+                return 0
+            case .archiveStatus(let options):
+                let status = try ProviderArchiveStore(rootDirectory: options.archiveDirectory).status(providerId: options.providerId)
+                output(try render(status, format: options.format))
+                return 0
             case .help:
                 output(CLIHelp.root())
                 return 0

@@ -1,5 +1,33 @@
 import Foundation
 
+public struct ArchiveSyncOptions: Equatable, Sendable {
+    public var providerId: String
+    public var input: URL
+    public var archiveDirectory: URL
+    public var budget: CrawlBudget
+    public var format: OutputFormat
+
+    public init(providerId: String, input: URL, archiveDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives"), budget: CrawlBudget = .defaultPolling, format: OutputFormat = .json) {
+        self.providerId = providerId
+        self.input = input
+        self.archiveDirectory = archiveDirectory
+        self.budget = budget
+        self.format = format
+    }
+}
+
+public struct ArchiveStatusOptions: Equatable, Sendable {
+    public var providerId: String
+    public var archiveDirectory: URL
+    public var format: OutputFormat
+
+    public init(providerId: String, archiveDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives"), format: OutputFormat = .json) {
+        self.providerId = providerId
+        self.archiveDirectory = archiveDirectory
+        self.format = format
+    }
+}
+
 public enum OutputFormat: String, Sendable {
     case json
     case text
@@ -525,6 +553,8 @@ public struct MetadataOptions: Equatable, Sendable {
 }
 
 public enum CLICommand: Equatable, Sendable {
+    case archiveStatus(ArchiveStatusOptions)
+    case archiveSync(ArchiveSyncOptions)
     case cacheRead(CacheOptions)
     case cacheStatus(CacheOptions)
     case cloudTabsProbe(CloudTabsProbeOptions)
@@ -593,6 +623,15 @@ public struct CLIParser: Sendable {
         if tokens == ["--version"] || tokens == ["-V"] { return .version }
 
         let topCommand = tokens.removeFirst()
+        if topCommand == "archive" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("archive") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "sync": return .archiveSync(try parseArchiveSyncOptions(tokens))
+            case "status": return .archiveStatus(try parseArchiveStatusOptions(tokens))
+            default: throw CLIParseError.unknownCommand("archive \(subcommand)")
+            }
+        }
         if topCommand == "providers" {
             guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("providers") }
             tokens.removeFirst()
@@ -897,6 +936,45 @@ public struct CLIParser: Sendable {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             case "--safari-dir": options.safariDirectory = try parseURL(after: token, in: tokens, at: &index)
             case "--profile": options.profile = try value(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseArchiveSyncOptions(_ tokens: [String]) throws -> ArchiveSyncOptions {
+        guard let providerId = tokens.first, !providerId.hasPrefix("--") else { throw CLIParseError.missingValue("PROVIDER") }
+        var input: URL?
+        var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+        var budget = CrawlBudget.defaultPolling
+        var format = OutputFormat.json
+        var index = 1
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--input": input = try parseURL(after: token, in: tokens, at: &index)
+            case "--archive-dir": archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--scan-limit": budget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: budget.wallClockLimitMilliseconds)
+            case "--timeout-ms": budget = CrawlBudget(scanLimit: budget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
+            case "--format": format = try parseFormat(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        guard let input else { throw CLIParseError.missingValue("--input") }
+        return ArchiveSyncOptions(providerId: providerId, input: input, archiveDirectory: archiveDirectory, budget: budget, format: format)
+    }
+
+    private func parseArchiveStatusOptions(_ tokens: [String]) throws -> ArchiveStatusOptions {
+        guard let providerId = tokens.first, !providerId.hasPrefix("--") else { throw CLIParseError.missingValue("PROVIDER") }
+        var options = ArchiveStatusOptions(providerId: providerId)
+        var index = 1
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1402,6 +1480,8 @@ icloud-cli \(version)
 Created by OMT-Global.
 
 Usage:
+  icloud-cli archive sync PROVIDER --input PATH [--archive-dir PATH] [--scan-limit N] [--timeout-ms N] [--format json|text]
+  icloud-cli archive status PROVIDER [--archive-dir PATH] [--format json|text]
   icloud-cli providers list [--format json|text]
   icloud-cli providers external-manifest [--format json|text]
   icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
@@ -1466,6 +1546,7 @@ Usage:
   icloud-cli safari extensions list [--profile NAME] [--format json|text] [--safari-store PATH]
 
 Commands:
+  archive        Incrementally sync and inspect private per-provider metadata archives.
   providers list List the versioned, machine-readable provider capability manifest.
   providers external-manifest Emit the local OpenClaw control-plane contract.
   snapshot       Emit a conservative redacted operator status payload.
