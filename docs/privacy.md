@@ -120,6 +120,8 @@ Messages and Safari history queries first copy the database and present WAL/SHM 
 
 Recursive Drive and Finder-tag crawls use explicit scan and wall-clock budgets and return structured partial/timeout metadata rather than hanging. Polling records only redacted failure codes and guidance when a crawl cannot finish. See [crawl-budgets.md](crawl-budgets.md) for the output contract.
 
+Resumable archives are restricted to providers that explicitly declare metadata archiving support. They use private local permissions, bounded sync, tombstones, retention, redacted failure state, and no automatic backup; high-sensitivity bodies and media fail closed. See [provider-archives.md](provider-archives.md) for the contract and encrypted-backup guidance.
+
 High-sensitivity gates:
 
 - `icloud-cli safari cloud-tabs list`, `icloud-cli mail recent`, and `icloud-cli health summary` require `--confirm-sensitive`.
