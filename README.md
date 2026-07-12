@@ -32,10 +32,10 @@ Use `icloud-cli safari cloud-tabs probe` to check whether Safari's cross-device 
 ```sh
 make build
 make test
-make release
+make release VERSION=0.2.0
 ```
 
-The first distribution path is a source checkout that builds a local release binary. `make release` writes `dist/icloud-cli` and `dist/icloud-cli.sha256`; copy or symlink that binary into the operator's PATH. See [docs/install.md](docs/install.md) for install and upgrade steps.
+Production releases are universal macOS DMGs signed with the stable `com.omtglobal.icloud-cli` identity, notarized, stapled, and published with checksums. Local packaging requires an explicit signing identity; see [docs/install.md](docs/install.md) and [docs/release.md](docs/release.md).
 
 ## CI
 

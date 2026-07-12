@@ -15,8 +15,8 @@ repo:
     - .github/ISSUE_TEMPLATE/implementation.yml
     - .github/ISSUE_TEMPLATE/flow_blocker.yml
 archetype:
-  kind: generic-empty
-  packageManager: npm
+  kind: generic-polyglot
+  packageManager: swift
   moduleName: icloud_cli
 github:
   createRepo: true
@@ -42,7 +42,10 @@ ci:
     - mutation
     - secrets
 release:
-  enabled: false
+  enabled: true
+  artifact: macos-universal-dmg
+  signingIdentity: com.omtglobal.icloud-cli
+  notarization: required
 agents:
   manageCodexHome: false
   sharedSkills:

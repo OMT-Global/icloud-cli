@@ -16,7 +16,7 @@ The product started with Safari tabs and CloudTabs investigation, but the useful
 
 - Supported sources: local Safari session/bookmark/profile/frequently-visited data, CloudTabs probes and confirmed sensitive listing, iCloud Drive metadata, Shortcuts metadata, account and system status caches, Wallet/Handoff fixtures, and broad local inventory snapshots.
 - Permission model: commands name unreadable paths and `permissions doctor` probes source availability without reading payload content.
-- Distribution path: SwiftPM source checkout and `make release` producing `dist/icloud-cli` plus checksum.
+- Distribution path: versioned universal macOS DMGs signed with a stable identifier, notarized, stapled, and published with checksums.
 - Integration path: OpenClaw skill contract and redacted command output suitable for local node reporting.
 
 ## Product Principles

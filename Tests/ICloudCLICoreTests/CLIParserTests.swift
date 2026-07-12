@@ -45,6 +45,10 @@ import Testing
     #expect(try CLIParser().parse(arguments: ["icloud-cli", "--version"]) == .version)
 }
 
+@Test func releaseVersionMatchesVisionV02() {
+    #expect(CLIHelp.version == "0.2.0")
+}
+
 @Test func rejectsInvalidSource() throws {
     #expect(throws: CLIParseError.invalidSource("icloud")) {
         try CLIParser().parse(arguments: ["icloud-cli", "safari", "tabs", "--source", "icloud"])

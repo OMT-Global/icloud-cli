@@ -1580,7 +1580,7 @@ public struct CLIParser: Sendable {
 }
 
 public enum CLIHelp {
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
 
     public static func root() -> String {
         """

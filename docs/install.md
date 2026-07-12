@@ -1,56 +1,11 @@
-# Install And Release Path
+# Install and upgrade
 
-The first supported distribution path is a source checkout that produces a predictable local release artifact. This keeps the package path compatible with OMT bootstrap governance while avoiding signing, notarization, and tap maintenance before the CLI surface stabilizes.
+The supported distribution is the signed, notarized, stapled universal macOS DMG attached to each GitHub release. Verify its adjacent SHA-256 file, mount it, and copy `icloud-cli` to a stable path such as `/usr/local/bin/icloud-cli`. Keeping the path and Developer ID designated requirement stable is required for macOS privacy-permission continuity.
 
-## Decision
+For upgrades, verify the new checksum and replace the executable atomically at the same path. Do not strip or re-sign it. Run `codesign --verify --strict /usr/local/bin/icloud-cli` and `spctl --assess --type execute /usr/local/bin/icloud-cli` after replacement.
 
-Use a source checkout plus `make release` for the first operator install path.
+Homebrew installation is deferred until OMT-Global operates a reviewed tap: a formula that rebuilds from source would lose the notarized stable identity, while a cask can install the release DMG without changing it. The future cask must reference the exact release checksum and preserve the installed path. Until then, direct DMG installation is safer than an unsigned formula.
 
-Deferred distribution paths:
+Developers may run `ALLOW_ADHOC_SIGNING=1 make release VERSION=0.2.0` only for packaging tests. Ad-hoc output is not a distributable release and does not provide permission continuity.
 
-- Homebrew tap.
-- OpenClaw-specific tap.
-- Signed and notarized binary artifact.
-
-Signing and notarization can follow once the command surface and release cadence are stable.
-
-## Build Artifact
-
-```sh
-make release
-```
-
-Expected outputs:
-
-- `dist/icloud-cli`
-- `dist/icloud-cli.sha256`
-
-The release target runs `swift build -c release`, creates `dist/`, copies the release executable to a stable path, and writes a SHA-256 checksum.
-
-## Install
-
-From a trusted checkout:
-
-```sh
-make release
-mkdir -p ~/.local/bin
-cp dist/icloud-cli ~/.local/bin/icloud-cli
-~/.local/bin/icloud-cli --version
-```
-
-Ensure `~/.local/bin` is on the operator PATH before configuring OpenClaw wrappers.
-
-## Upgrade
-
-```sh
-git pull --ff-only
-make release
-cp dist/icloud-cli ~/.local/bin/icloud-cli
-~/.local/bin/icloud-cli --version
-```
-
-If the checkout is managed by an agent, verify the branch and PR state before pulling or replacing a live binary.
-
-## Bootstrap Compatibility
-
-This repo keeps release automation in source-controlled project files and leaves GitHub policy under `project.bootstrap.yaml`. The current manifest has `release.enabled: false`, so this release target is a local operator artifact path, not a remote publishing workflow.
+See [release.md](release.md) for signing, notarization, evidence, and clean-account validation.
