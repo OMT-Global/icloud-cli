@@ -47,6 +47,13 @@ private let fixtures = URL(fileURLWithPath: #filePath)
     #expect(try HandoffActivityReader(handoffDirectory: directory).listActivities().isEmpty)
 }
 
+@Test func emptyHandoffCacheDoesNotHideMalformedNeighbor() {
+    let directory = fixtures.appendingPathComponent("HandoffEmptyMixed")
+    #expect(throws: HandoffError.unparseable(directory.path)) {
+        try HandoffActivityReader(handoffDirectory: directory).listActivities()
+    }
+}
+
 @Test func validHandoffActivitySurvivesMalformedNeighbor() throws {
     let directory = fixtures.appendingPathComponent("HandoffMixed")
     let activities = try HandoffActivityReader(handoffDirectory: directory).listActivities()

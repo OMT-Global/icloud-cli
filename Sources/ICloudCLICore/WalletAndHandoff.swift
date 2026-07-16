@@ -92,15 +92,18 @@ public struct HandoffActivityReader: Sendable {
         guard let enumerator = FileManager.default.enumerator(at: handoffDirectory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { throw HandoffError.unreadable(handoffDirectory.path) }
         var activities: [HandoffActivity] = []
         var candidateFileCount = 0
-        var parsedFileCount = 0
+        var recoveredActivityCount = 0
+        var malformedCandidateCount = 0
         for case let url as URL in enumerator where ["json", "plist"].contains(url.pathExtension) {
             candidateFileCount += 1
             if let parsedActivities = readActivities(from: url) {
-                parsedFileCount += 1
                 activities.append(contentsOf: parsedActivities)
+                recoveredActivityCount += parsedActivities.count
+            } else {
+                malformedCandidateCount += 1
             }
         }
-        if candidateFileCount > 0, parsedFileCount == 0 {
+        if candidateFileCount > 0, recoveredActivityCount == 0, malformedCandidateCount > 0 {
             throw HandoffError.unparseable(handoffDirectory.path)
         }
         return Array(activities.sorted { $0.updatedAt > $1.updatedAt }.prefix(max(0, limit)))
