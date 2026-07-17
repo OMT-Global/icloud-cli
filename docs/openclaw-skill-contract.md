@@ -1,69 +1,86 @@
-# OpenClaw Safari Tabs Skill Contract
+# OpenClaw provider control-plane contract
 
-OpenClaw should invoke `icloud-cli` as a local MacBook node tool. The skill contract is intentionally read-only and local-retention first: raw browsing data stays on the Mac unless an operator explicitly exports it.
+`icloud-cli` is a local, read-only Mac node tool. OpenClaw integrations discover the available Apple-data providers from a versioned external manifest, then invoke bounded actions. The contract does not grant remote access, create a daemon, or retain payload data outside the operator's Mac.
 
-## Command
-
-```sh
-icloud-cli safari tabs --format json
-```
-
-Recommended wrapper behavior:
+## Discovery
 
 ```sh
-#!/usr/bin/env bash
-set -euo pipefail
-
-icloud-cli safari tabs --format json
+icloud-cli providers external-manifest --format json
 ```
 
-Use `--safari-dir PATH` only for synthetic fixtures, tests, or a deliberate operator override. Use `icloud-cli safari cloud-tabs probe --format json` as a readiness check before any future cloud-tab opt-in is offered.
+The command returns `icloud-cli.openclaw.external.v1`. Its `providerManifest` is the exact [`icloud-cli.providers.v1`](provider-manifest.md) registry emitted by `icloud-cli providers list`; integration code must use that embedded registry rather than maintaining another command list. The `actions` array defines the default command, availability, local-only boundary, confirmation rule, redaction mode, timeout, retention, and structured wrapper-error shape for every action class.
 
-## JSON Schema
+The registry and external manifest are static metadata. They contain no account identifiers, user paths, authorization results, payload records, or permission-probe output.
 
-Successful `safari tabs --format json` output is an array of tab objects:
+## Action wrappers
+
+Wrappers must use argument arrays, not a shell string assembled from model output. They must run only on the same Mac where the operator has installed `icloud-cli`, enforce the manifest timeout, and replace a failed CLI invocation with a local structured error:
 
 ```json
-[
-  {
-    "source": "current-session",
-    "tabIndex": 0,
-    "title": "Example",
-    "url": "https://example.com/current",
-    "windowIndex": 0
-  }
-]
+{
+  "schemaVersion": "structured-action-error-v1",
+  "action": "doctor",
+  "code": "command-failed",
+  "retryable": false,
+  "message": "Permission diagnosis could not read one or more local sources."
+}
 ```
 
-Field contract:
+Never include raw home-directory paths, command payloads, or stderr in that error. Use a stable local code such as `command-failed`, `timed-out`, `confirmation-required`, or `unavailable` and keep any diagnostic detail in a local operator view.
 
-| Field | Type | Notes |
+| Action | Wrapper command or behavior | Gate and output boundary |
 | --- | --- | --- |
-| `url` | string | Full URL requested by the operator. Treat as sensitive. |
-| `title` | string or null | Browser title. Treat as sensitive and redact from status logs by default. |
-| `windowIndex` | integer or null | Zero-based window index when the source preserves it. |
-| `tabIndex` | integer or null | Zero-based tab index when the source preserves it. |
-| `source` | string | `current-session` or `last-session` for the current command. |
+| `discover` | `icloud-cli providers list --format json` | No confirmation. Metadata only; do not cache remotely. |
+| `status` | `icloud-cli snapshot --redaction safe --format json` | No confirmation. Return the safe summary only; discard it after the local status response unless the operator exports it. |
+| `doctor` | `icloud-cli permissions doctor --format json` | No confirmation. Source readiness only; redact local paths in UI/logs. |
+| `sync` | Currently `unavailable` | Do not emulate sync or cache arbitrary command output. It activates only when the resumable archive contract lands. |
+| `query` | Select a command from `providerManifest.providers[].commands` | Explicit operator confirmation for every moderate/high-sensitivity provider and for any CLI `--confirm-sensitive` flag. Do not infer permission from discovery. |
 
-The cloud-tab probe emits one object with booleans for `exists` and `readable`, a nullable `sizeBytes`, source-class lists, a `recommendedDefault`, a `permissionExpectation`, and a nullable `failureMode`.
+The external manifest is authoritative for the command source and action availability. A wrapper must return `unavailable` for a disabled action instead of guessing a future command.
 
-## Error Shape
+### Minimal wrapper examples
 
-The CLI exits non-zero and writes a single human-readable error line to stderr. OpenClaw should classify these strings into actionable local status:
+```sh
+# Discovery (metadata only)
+icloud-cli providers external-manifest --format json
 
-| Error text contains | OpenClaw status |
+# Safe local status
+icloud-cli snapshot --redaction safe --format json
+
+# Permission diagnosis without reading payload data
+icloud-cli permissions doctor --format json
+```
+
+A query wrapper first loads `providerManifest`, validates that the selected command path belongs to the requested provider, asks the operator for confirmation where the action says it is required, and then invokes exactly that argument array. For example, the retained Safari path remains available after confirmation:
+
+```sh
+icloud-cli safari tabs --format json
+```
+
+Safari tab URLs and titles are sensitive. A wrapper must present a redacted local summary by default and only return full raw JSON to an explicitly confirmed local consumer. It must not send that data to a remote planner or log sink.
+
+## Retention and export
+
+- All actions are local-only. No wrapper may upload provider output, error text, or source paths by default.
+- Keep status/doctor response data only for the duration of the local request. Query output has the provider's own retention policy and is not a permission to create a general archive.
+- Remote export is an explicit, separately named operator action with a destination and a redaction preview. It is outside this contract.
+- `sync` remains unavailable until its archive issue supplies cursor, retention, deletion, and migration semantics. Search actions remain unavailable until the federated-search issue lands.
+
+## CrawlBar-compatible mapping
+
+The manifest can be adapted to a CrawlBar-style external tool declaration without a menu-bar process:
+
+| External control-plane field | CrawlBar-style mapping |
 | --- | --- |
-| `No readable Safari session files found` | Permission or path problem; ask operator to grant Full Disk Access or check `--safari-dir`. |
-| `Readable Safari session files did not contain tabs` | Safari data was readable but empty; not an infrastructure failure. |
-| `unreadable Safari session files` | Mixed empty/unreadable state; report both readable-empty and permission follow-up. |
-| `Unsupported output format` | Skill wrapper bug; repair command arguments. |
+| `schemaVersion` | External tool contract version |
+| `providerManifest.providers` | Discoverable provider catalogue and provider-scoped query choices |
+| `actions[].command` | Bounded executable argument array |
+| `actions[].availability` | Tool enabled/disabled state |
+| `confirmation`, `redaction`, `timeoutSeconds`, `retention` | Invocation policy and local execution limits |
+| `errorShape` | Normalized local tool failure envelope |
 
-Do not upload stderr with unredacted local paths to remote logs. Replace the home directory with `~/...` in OpenClaw status summaries.
+This mapping is intentionally process-neutral: OpenClaw or another local controller can invoke the CLI directly. It does not require a menu-bar app, a persistent helper, a launchd service, or a privileged IPC channel.
 
-## Retention And Export Boundaries
+## Compatibility
 
-- Default retention is local-only on the MacBook node.
-- OpenClaw status logs should redact titles and reduce URLs to scheme plus host unless the operator requests full export.
-- Raw JSON output may be passed to a local OpenClaw planner on the same Mac.
-- Remote export requires an explicit operator action and should name the destination.
-- Cloud-tab data must stay disabled by default until a fixture-backed parser and opt-in flag exist.
+`icloud-cli.openclaw.external.v1` is additive within its major schema: consumers must ignore unknown fields and actions. Changing an action's safety boundary, removing an existing action, or changing the embedded provider-manifest semantics requires a new schema identifier and a migration period.
