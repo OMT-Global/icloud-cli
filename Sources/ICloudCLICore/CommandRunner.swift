@@ -114,6 +114,9 @@ public struct CommandRunner: Sendable {
                 let screenshots = try PhotosInventoryReader(screenshotsDirectory: options.screenshotsDirectory).listScreenshots()
                 output(try render(screenshots, format: options.format))
                 return 0
+            case .providersExternalManifest(let format):
+                output(try render(ExternalControlPlaneRegistry.manifest, format: format))
+                return 0
             case .providersList(let format):
                 output(try render(ProviderRegistry.manifest, format: format))
                 return 0
@@ -287,6 +290,21 @@ public struct CommandRunner: Sendable {
                 "\(provider.id) \(provider.displayName) maturity=\(provider.maturity.rawValue) source=\(provider.sourceKind.rawValue) access=\(provider.accessMode.rawValue) sensitivity=\(provider.sensitivity.rawValue) default-polling=\(provider.defaultPolling) commands=\(provider.commands.joined(separator: ",")) capabilities=\(provider.capabilities.joined(separator: ",")) permissions=\(provider.permissionExpectations.joined(separator: ","))"
             }
             return (["Provider manifest \(manifest.schemaVersion)"] + providers).joined(separator: "\n")
+        }
+    }
+
+    public func render(_ manifest: ExternalControlPlaneManifest, format: OutputFormat) throws -> String {
+        switch format {
+        case .json:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return String(decoding: try encoder.encode(manifest), as: UTF8.self)
+        case .text:
+            let actions = manifest.actions.map { action in
+                let command = action.command?.joined(separator: " ") ?? action.providerCommandSource ?? "unavailable"
+                return "\(action.id) availability=\(action.availability.rawValue) confirmation=\(action.confirmation.rawValue) command=\(command)"
+            }
+            return (["External control-plane manifest \(manifest.schemaVersion)"] + actions).joined(separator: "\n")
         }
     }
 

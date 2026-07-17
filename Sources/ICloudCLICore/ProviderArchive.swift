@@ -323,16 +323,21 @@ public struct ProviderArchiveStore: Sendable {
         let forbidden = Set(["body", "content", "mediadata", "pixeldata", "audiodata", "attachment", "attachments"])
         for (key, value) in fields {
             if forbidden.contains(key.lowercased()) { return key }
-            switch value {
-            case .object(let nested): if let match = sensitiveField(in: nested) { return match }
-            case .array(let values):
-                for case .object(let nested) in values {
-                    if let match = sensitiveField(in: nested) { return match }
-                }
-            default: break
-            }
+            if let match = sensitiveField(in: value) { return match }
         }
         return nil
+    }
+
+    private func sensitiveField(in value: ArchiveValue) -> String? {
+        switch value {
+        case .object(let fields): return sensitiveField(in: fields)
+        case .array(let values):
+            for value in values {
+                if let match = sensitiveField(in: value) { return match }
+            }
+            return nil
+        default: return nil
+        }
     }
 
     private func redactedFailure(_ failure: ArchiveFailure) -> ArchiveFailure {

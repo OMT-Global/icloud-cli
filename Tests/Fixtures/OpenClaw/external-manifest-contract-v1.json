@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "icloud-cli.openclaw.external.v1",
+  "actionIDs": ["discover", "status", "doctor", "sync", "query"],
+  "allActionsLocalOnly": true
+}
