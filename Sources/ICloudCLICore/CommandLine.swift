@@ -302,6 +302,22 @@ public struct MessagesSearchOptions: Equatable, Sendable {
     public init(query: String) { self.query = query }
 }
 
+public struct FederatedSearchOptions: Equatable, Sendable {
+    public let query: String
+    public var providers: [String] = []
+    public var since: String?
+    public var until: String?
+    public var limit = 50
+    public var cursor: String?
+    public var includeSensitive = false
+    public var includeBodies = false
+    public var confirmSensitive = false
+    public var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+    public var format: OutputFormat = .json
+
+    public init(query: String) { self.query = query }
+}
+
 public struct ContactsListOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var addressBookDatabase: URL
@@ -584,6 +600,7 @@ public enum CLICommand: Equatable, Sendable {
     case driveContainers(DriveContainersOptions)
     case driveList(DriveListOptions)
     case focusStatus(FocusStatusOptions)
+    case federatedSearch(FederatedSearchOptions)
     case handoffList(HandoffListOptions)
     case mapsFavorites(MapsOptions)
     case mapsRecents(MapsOptions)
@@ -671,6 +688,11 @@ public struct CLIParser: Sendable {
             case "external-manifest": return .providersExternalManifest(format)
             default: throw CLIParseError.unknownCommand((["providers", subcommand] + tokens).joined(separator: " "))
             }
+        }
+        if topCommand == "search" {
+            guard let query = tokens.first else { throw CLIParseError.missingValue("query") }
+            tokens.removeFirst()
+            return .federatedSearch(try parseFederatedSearchOptions(query: query, tokens: tokens))
         }
         if topCommand == "snapshot" {
             return .metadata(.snapshot, try parseMetadataOptions(tokens))
@@ -1347,6 +1369,28 @@ public struct CLIParser: Sendable {
             case "--confirm-sensitive": options.confirmSensitive = true
             case "--include-body": options.includeBody = true
             case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseFederatedSearchOptions(query: String, tokens: [String]) throws -> FederatedSearchOptions {
+        var options = FederatedSearchOptions(query: query); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--provider": options.providers.append(try value(after: token, in: tokens, at: &index))
+            case "--since": options.since = try value(after: token, in: tokens, at: &index)
+            case "--until": options.until = try value(after: token, in: tokens, at: &index)
+            case "--cursor": options.cursor = try value(after: token, in: tokens, at: &index)
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--include-sensitive": options.includeSensitive = true
+            case "--include-bodies": options.includeBodies = true
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
