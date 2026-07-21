@@ -113,7 +113,7 @@ public struct CommandRunner: Sendable {
                 return 0
             case .remindersList(let options):
                 let reminders = if options.degradedPrivateStore {
-                    try LocalSQLiteInventoryReader(database: options.store).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted)
+                    try LocalSQLiteInventoryReader(database: options.store).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted, limit: options.limit)
                 } else {
                     try EventKitRemindersProvider(client: remindersClient).reminders(list: options.list, dueBefore: options.dueBefore, dueAfter: options.dueAfter, includeCompleted: options.includeCompleted, limit: options.limit)
                 }
@@ -121,7 +121,7 @@ public struct CommandRunner: Sendable {
                 return 0
             case .remindersLists(let options):
                 let lists = if options.degradedPrivateStore {
-                    try LocalSQLiteInventoryReader(database: options.store).reminderLists()
+                    try LocalSQLiteInventoryReader(database: options.store).reminderLists(limit: options.limit)
                 } else {
                     try EventKitRemindersProvider(client: remindersClient).lists(limit: options.limit)
                 }

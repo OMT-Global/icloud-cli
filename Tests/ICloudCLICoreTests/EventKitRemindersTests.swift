@@ -58,6 +58,30 @@ import Testing
     #expect(options.store.path == "/tmp/reminders.sqlite")
 }
 
+@Test func commandRunnerBoundsDegradedPrivateStoreResults() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("icloud-cli-reminders-limit-\(UUID().uuidString)")
+    let database = root.appendingPathComponent("reminders.sqlite")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try runSQLite(database: database, sql: """
+    CREATE TABLE reminders (title TEXT, listName TEXT, dueAt TEXT, isCompleted INTEGER, priority INTEGER, notes TEXT, createdAt TEXT);
+    INSERT INTO reminders VALUES ('First', 'Alpha', '2026-01-01T00:00:00Z', 0, 0, NULL, '2025-12-01T00:00:00Z');
+    INSERT INTO reminders VALUES ('Second', 'Beta', '2026-01-02T00:00:00Z', 0, 0, NULL, '2025-12-02T00:00:00Z');
+    INSERT INTO reminders VALUES ('Third', 'Beta', '2026-01-03T00:00:00Z', 0, 0, NULL, '2025-12-03T00:00:00Z');
+    """)
+
+    final class Sink: @unchecked Sendable { var output: [String] = []; var errors: [String] = [] }
+    let sink = Sink()
+    let runner = CommandRunner(output: { sink.output.append($0) }, errorOutput: { sink.errors.append($0) })
+
+    #expect(runner.run(arguments: ["icloud-cli", "reminders", "lists", "--degraded-private-store", "--reminders-store", database.path, "--limit", "1"]) == 0)
+    #expect(runner.run(arguments: ["icloud-cli", "reminders", "list", "--degraded-private-store", "--reminders-store", database.path, "--limit", "1"]) == 0)
+
+    #expect(try JSONDecoder().decode([ReminderListSummary].self, from: Data(sink.output[0].utf8)).map(\.name) == ["Alpha"])
+    #expect(try JSONDecoder().decode([ReminderEntry].self, from: Data(sink.output[1].utf8)).map(\.title) == ["First"])
+    #expect(sink.errors.isEmpty)
+}
+
 @Test func permissionsDoctorReportsEventKitAuthorization() {
     let probes = PermissionsDoctor(remindersAuthorization: .denied).diagnose()
     let reminders = probes.first { $0.command == "reminders list" }
@@ -85,4 +109,13 @@ private func eventKitReminder(
     completed: Bool = false
 ) -> EventKitReminderRecord {
     EventKitReminderRecord(id: id, title: title, listId: listId, listName: listName, dueAt: dueAt, isCompleted: completed, priority: 0, notes: nil, createdAt: nil)
+}
+
+private func runSQLite(database: URL, sql: String) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    process.arguments = [database.path, sql]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
 }
