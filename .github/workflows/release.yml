@@ -27,7 +27,8 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then version="$INPUT_VERSION"; fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "$(swift run icloud-cli --version | head -1)" == "icloud-cli $version" ]]
+          actual_version="$(swift run icloud-cli --version | head -1)"
+          [[ "$actual_version" == "$version" ]]
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Import Developer ID certificate
         env:
