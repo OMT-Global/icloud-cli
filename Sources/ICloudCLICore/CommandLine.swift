@@ -641,6 +641,7 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
     case invalidSource(String)
     case invalidFormat(String)
     case invalidPassType(String)
+    case invalidOptionCombination(String)
 
     public var errorDescription: String? {
         switch self {
@@ -649,6 +650,7 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
         case .invalidSource(let source): return "Invalid Safari tabs source: \(source)"
         case .invalidFormat(let format): return "Invalid output format: \(format)"
         case .invalidPassType(let type): return "Invalid wallet pass type: \(type)"
+        case .invalidOptionCombination(let message): return message
         }
     }
 }
@@ -1235,17 +1237,22 @@ public struct CLIParser: Sendable {
     }
 
     private func parsePhotosListOptions(_ tokens: [String]) throws -> PhotosListOptions {
-        var options = PhotosListOptions(); var index = 0
+        var options = PhotosListOptions(); var index = 0; var specifiesPhotosLibrary = false
         while index < tokens.count {
             let token = tokens[index]
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
-            case "--photos-library": options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+            case "--photos-library":
+                options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+                specifiesPhotosLibrary = true
             case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
             case "--degraded-filesystem": options.degradedFilesystem = true
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
+        }
+        if specifiesPhotosLibrary && !options.degradedFilesystem {
+            throw CLIParseError.invalidOptionCombination("--photos-library requires --degraded-filesystem")
         }
         return options
     }

@@ -30,6 +30,20 @@ import Testing
     #expect(try CLIParser().parse(arguments: ["icloud-cli", "photos", "authorization"]) == .photosAuthorization(.json))
 }
 
+@Test func commandRunnerRejectsPhotosLibraryWithoutDegradedFilesystem() {
+    final class Sink: @unchecked Sendable { var output = ""; var error = "" }
+    let sink = Sink()
+    let runner = CommandRunner(
+        photoKitClient: FakePhotoKitClient(authorization: .authorized, assets: []),
+        output: { sink.output = $0 },
+        errorOutput: { sink.error = $0 }
+    )
+
+    #expect(runner.run(arguments: ["icloud-cli", "photos", "list", "--photos-library", "/tmp/Photos.photoslibrary"]) == 1)
+    #expect(sink.output.isEmpty)
+    #expect(sink.error.contains("--photos-library requires --degraded-filesystem"))
+}
+
 @Test func permissionsDoctorUsesPhotoKitAuthorizationInsteadOfFilesystemProbe() {
     let probe = PermissionsDoctor(photoAuthorization: .denied).diagnose().first { $0.command == "photos list" }
     #expect(probe?.status == "photokit-denied")
