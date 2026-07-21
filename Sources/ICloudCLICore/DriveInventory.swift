@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum DriveSortKey: String, Sendable {
@@ -59,11 +60,13 @@ public struct ICloudDriveSharedItem: Codable, Equatable, Sendable {
 public enum DriveInventoryError: Error, LocalizedError, Equatable {
     case missingRoot(String)
     case invalidPath(String)
+    case crawlWorkerUnavailable
 
     public var errorDescription: String? {
         switch self {
         case .missingRoot(let path): return "iCloud Drive root not available: \(path)"
         case .invalidPath(let path): return "Path is outside the iCloud Drive root: \(path)"
+        case .crawlWorkerUnavailable: return "Unable to start the bounded iCloud Drive crawl worker"
         }
     }
 }
@@ -71,13 +74,29 @@ public enum DriveInventoryError: Error, LocalizedError, Equatable {
 public struct ICloudDriveInventoryReader: Sendable {
     public let rootDirectory: URL
     private let now: @Sendable () -> TimeInterval
+    private let workerExecutable: URL?
+    private let workerArguments: [String]?
+    private let workerStarted: @Sendable (Int32) -> Void
 
     public init(
         rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"),
         now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
+        self.init(rootDirectory: rootDirectory, now: now, workerExecutable: nil)
+    }
+
+    init(
+        rootDirectory: URL,
+        now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        workerExecutable: URL?,
+        workerArguments: [String]? = nil,
+        workerStarted: @escaping @Sendable (Int32) -> Void = { _ in }
+    ) {
         self.rootDirectory = rootDirectory.standardizedFileURL
         self.now = now
+        self.workerExecutable = workerExecutable
+        self.workerArguments = workerArguments
+        self.workerStarted = workerStarted
     }
 
     public func listFiles(path requestedPath: String? = nil, depth: Int = 2, limit: Int? = nil) throws -> [ICloudDriveFile] {
@@ -102,7 +121,7 @@ public struct ICloudDriveInventoryReader: Sendable {
             return CrawlReport(providerId: "drive", state: .complete, data: [file], scannedCount: 1, resultCount: 1, totalAvailable: 1, budget: budget, elapsedMilliseconds: elapsedMilliseconds(since: startedAt), nextAction: nil)
         }
         let maxDepth = max(0, depth)
-        let walk = walkFiles(at: startURL, maxDepth: maxDepth, budget: budget, startedAt: startedAt)
+        let walk = try walkFiles(at: startURL, maxDepth: maxDepth, budget: budget, startedAt: startedAt)
         let files = walk.files.sorted { lhs, rhs in lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending }
         let state = walk.termination ?? .complete
         return CrawlReport(
@@ -222,42 +241,86 @@ public struct ICloudDriveInventoryReader: Sendable {
         max(200, bounded(resultLimit, defaultValue: 500, max: 2_000) * 5)
     }
 
-    private func walkFiles(at directory: URL, maxDepth: Int, budget: CrawlBudget, startedAt: TimeInterval) -> DriveWalkState {
+    private func walkFiles(at directory: URL, maxDepth: Int, budget: CrawlBudget, startedAt: TimeInterval) throws -> DriveWalkState {
         let box = DriveWalkBox()
-        let completed = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
-            enumerateFiles(at: directory, maxDepth: maxDepth, budget: budget, startedAt: startedAt, box: box)
-            completed.signal()
+        let output = Pipe()
+        let process = Process()
+        if let workerExecutable {
+            process.executableURL = workerExecutable
+            process.arguments = workerArguments ?? [directory.path, String(maxDepth)]
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/find")
+            let workerMaxDepth = maxDepth == .max ? .max : maxDepth + 1
+            process.arguments = [directory.path, "-maxdepth", String(workerMaxDepth), "-type", "f", "-print0"]
         }
-        if completed.wait(timeout: .now() + .milliseconds(budget.wallClockLimitMilliseconds)) != .success {
-            box.finish(.timeout)
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        let reader = DriveWalkOutputBox()
+        let outputHandle = output.fileHandleForReading
+        do {
+            try process.run()
+        } catch {
+            throw DriveInventoryError.crawlWorkerUnavailable
+        }
+        workerStarted(process.processIdentifier)
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { reader.finish() }
+            while true {
+                guard let data = try? outputHandle.read(upToCount: 8_192), !data.isEmpty else { return }
+                reader.append(data)
+            }
+        }
+
+        var pending = Data()
+        let deadline = DispatchTime.now() + .milliseconds(budget.wallClockLimitMilliseconds)
+        while process.isRunning {
+            if !consumeWorkerOutput(&pending, from: reader.drain(), scanLimit: budget.scanLimit, box: box) {
+                terminateWorker(process)
+                break
+            }
+            if elapsedMilliseconds(since: startedAt) >= budget.wallClockLimitMilliseconds || DispatchTime.now() >= deadline {
+                box.finish(.timeout)
+                terminateWorker(process)
+                break
+            }
+            _ = reader.waitForOutput(timeout: .milliseconds(10))
+        }
+
+        while !reader.isFinished {
+            _ = consumeWorkerOutput(&pending, from: reader.drain(), scanLimit: budget.scanLimit, box: box)
+            _ = reader.waitForOutput(timeout: .milliseconds(10))
+        }
+        _ = consumeWorkerOutput(&pending, from: reader.drain(), scanLimit: budget.scanLimit, box: box)
+        if !box.shouldStop {
+            box.finish(.complete)
         }
         return box.snapshot()
     }
 
-    private func enumerateFiles(at directory: URL, maxDepth: Int, budget: CrawlBudget, startedAt: TimeInterval, box: DriveWalkBox) {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory,
-            includingPropertiesForKeys: keys,
-            options: [],
-            errorHandler: { _, _ in true }
-        ) else {
-            box.finish(.complete)
-            return
+    private func consumeWorkerOutput(_ pending: inout Data, from data: Data, scanLimit: Int, box: DriveWalkBox) -> Bool {
+        pending.append(data)
+        while let terminator = pending.firstIndex(of: 0) {
+            let pathData = pending.prefix(upTo: terminator)
+            pending.removeSubrange(...terminator)
+            guard !pathData.isEmpty, let path = String(data: pathData, encoding: .utf8) else { continue }
+            let url = URL(fileURLWithPath: path)
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            guard box.append(fileEntry(for: url, values: values), scanLimit: scanLimit) else { return false }
         }
-        while true {
-            if elapsedMilliseconds(since: startedAt) >= budget.wallClockLimitMilliseconds { box.finish(.timeout); return }
-            if box.shouldStop { return }
-            guard let child = enumerator.nextObject() as? URL else { box.finish(.complete); return }
-            if box.shouldStop { return }
-            let values = try? child.resourceValues(forKeys: Set(keys))
-            if values?.isDirectory == true {
-                if enumerator.level > maxDepth { enumerator.skipDescendants() }
-                continue
-            }
-            guard box.append(fileEntry(for: child, values: values), scanLimit: budget.scanLimit) else { return }
+        return true
+    }
+
+    private func terminateWorker(_ process: Process) {
+        guard process.isRunning else { return }
+        process.terminate()
+        let deadline = DispatchTime.now().uptimeNanoseconds + 100_000_000
+        while process.isRunning && DispatchTime.now().uptimeNanoseconds < deadline {
+            Thread.sleep(forTimeInterval: 0.005)
         }
+        if process.isRunning {
+            _ = kill(process.processIdentifier, SIGKILL)
+        }
+        process.waitUntilExit()
     }
 
     private func elapsedMilliseconds(since startedAt: TimeInterval) -> Int {
@@ -383,6 +446,43 @@ private final class DriveWalkBox: @unchecked Sendable {
     func snapshot() -> DriveWalkState {
         lock.lock(); defer { lock.unlock() }
         return state
+    }
+}
+
+private final class DriveWalkOutputBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private let outputAvailable = DispatchSemaphore(value: 0)
+    private var output = Data()
+    private var finished = false
+
+    var isFinished: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return finished
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        output.append(data)
+        lock.unlock()
+        outputAvailable.signal()
+    }
+
+    func drain() -> Data {
+        lock.lock(); defer { lock.unlock() }
+        let drained = output
+        output.removeAll(keepingCapacity: true)
+        return drained
+    }
+
+    func finish() {
+        lock.lock()
+        finished = true
+        lock.unlock()
+        outputAvailable.signal()
+    }
+
+    func waitForOutput(timeout: DispatchTimeInterval) -> DispatchTimeoutResult {
+        outputAvailable.wait(timeout: .now() + timeout)
     }
 }
 
