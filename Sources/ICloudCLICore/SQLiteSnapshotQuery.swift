@@ -89,7 +89,8 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
     }
 
     func withSnapshot<Result>(_ operation: (URL, URL) throws -> Result) throws -> Result {
-        guard FileManager.default.fileExists(atPath: source.path) else {
+        let resolvedSource = source.resolvingSymlinksInPath()
+        guard FileManager.default.fileExists(atPath: resolvedSource.path) else {
             throw LocalInventoryError.missingStore(reportedStore)
         }
 
@@ -107,9 +108,9 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
 
         let snapshot = directory.appendingPathComponent("snapshot.sqlite")
         do {
-            try copy(source, to: snapshot)
+            try copy(resolvedSource, to: snapshot)
             for suffix in ["-wal", "-shm"] {
-                let companion = URL(fileURLWithPath: source.path + suffix)
+                let companion = URL(fileURLWithPath: resolvedSource.path + suffix)
                 guard FileManager.default.fileExists(atPath: companion.path) else { continue }
                 try copy(companion, to: URL(fileURLWithPath: snapshot.path + suffix))
             }

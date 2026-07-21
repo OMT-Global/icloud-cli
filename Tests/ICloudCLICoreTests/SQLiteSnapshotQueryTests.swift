@@ -32,6 +32,25 @@ private struct SnapshotValueRow: Decodable, Equatable { let value: String }
     #expect(rows == [SnapshotValueRow(value: "wal-row")])
 }
 
+@Test func snapshotQueryFollowsSymlinkedStoreAndCopiesWALCompanions() throws {
+    let root = try temporarySQLiteSnapshotDirectory(named: "symlink-wal")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let liveStore = root.appendingPathComponent("live/source.db")
+    try FileManager.default.createDirectory(at: liveStore.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let writer = try openWALFixture(database: liveStore)
+    defer { writer.stop() }
+    let linkedStore = root.appendingPathComponent("linked-source.db")
+    try FileManager.default.createSymbolicLink(atPath: linkedStore.path, withDestinationPath: liveStore.path)
+
+    let engine = SQLiteSnapshotQueryEngine(source: linkedStore)
+    try engine.withSnapshot { snapshot, workspace in
+        #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: snapshot.path)) == nil)
+        #expect(FileManager.default.fileExists(atPath: snapshot.path + "-wal"))
+        let rows: [SnapshotValueRow] = try engine.querySnapshot(snapshot, workspace: workspace, sql: "SELECT value FROM values_table ORDER BY value;")
+        #expect(rows == [SnapshotValueRow(value: "wal-row")])
+    }
+}
+
 @Test func snapshotQueryMapsSchemaDriftAndBusyFailures() {
     let schema = sqliteError(from: Data("Error: no such table: missing".utf8), store: "/private/source.db")
     #expect(schema == .unsupportedSchema(store: "/private/source.db", detail: "Error: no such table: missing"))
