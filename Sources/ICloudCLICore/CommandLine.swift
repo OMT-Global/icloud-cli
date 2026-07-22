@@ -196,14 +196,18 @@ public struct RemindersListOptions: Equatable, Sendable {
     public var dueBefore: String?
     public var dueAfter: String?
     public var includeCompleted: Bool
+    public var degradedPrivateStore: Bool
+    public var limit: Int
 
-    public init(format: OutputFormat = .json, store: URL = AppleRemindersStoreResolver().database() ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false) {
+    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false, degradedPrivateStore: Bool = false, limit: Int = 200) {
         self.format = format
         self.store = store
         self.list = list
         self.dueBefore = dueBefore
         self.dueAfter = dueAfter
         self.includeCompleted = includeCompleted
+        self.degradedPrivateStore = degradedPrivateStore
+        self.limit = limit
     }
 }
 
@@ -537,6 +541,7 @@ public enum CLICommand: Equatable, Sendable {
     case providersList(OutputFormat)
     case remindersList(RemindersListOptions)
     case remindersLists(RemindersListOptions)
+    case remindersAuthorization(OutputFormat)
     case safariBookmarks(SafariBookmarksOptions)
     case safariFrequentlyVisited(SafariFrequentlyVisitedOptions)
     case safariHistory(SafariHistoryOptions)
@@ -569,7 +574,11 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
 }
 
 public struct CLIParser: Sendable {
-    public init() {}
+    private let remindersStoreResolver: @Sendable () -> URL?
+
+    public init(remindersStoreResolver: @escaping @Sendable () -> URL? = { AppleRemindersStoreResolver().database() }) {
+        self.remindersStoreResolver = remindersStoreResolver
+    }
 
     public func parse(arguments: [String]) throws -> CLICommand {
         var tokens = Array(arguments.dropFirst())
@@ -784,6 +793,7 @@ public struct CLIParser: Sendable {
             guard let remindersCommand = tokens.first else { throw CLIParseError.unknownCommand("reminders") }
             tokens.removeFirst()
             switch remindersCommand {
+            case "authorization": return .remindersAuthorization(try parseFormatOnlyOptions(tokens))
             case "list": return .remindersList(try parseRemindersListOptions(tokens))
             case "lists": return .remindersLists(try parseRemindersListOptions(tokens))
             case "flagged": return .metadata(.remindersFlagged, try parseMetadataOptions(tokens))
@@ -1114,21 +1124,43 @@ public struct CLIParser: Sendable {
     }
 
     private func parseRemindersListOptions(_ tokens: [String]) throws -> RemindersListOptions {
-        var options = RemindersListOptions(); var index = 0
+        var options = RemindersListOptions(); var hasExplicitStore = false; var index = 0
         while index < tokens.count {
             let token = tokens[index]
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
-            case "--reminders-store": options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--reminders-store":
+                options.store = try parseURL(after: token, in: tokens, at: &index)
+                hasExplicitStore = true
             case "--list": options.list = try value(after: token, in: tokens, at: &index)
             case "--due-before": options.dueBefore = try value(after: token, in: tokens, at: &index)
             case "--due-after": options.dueAfter = try value(after: token, in: tokens, at: &index)
             case "--completed": options.includeCompleted = true
+            case "--degraded-private-store": options.degradedPrivateStore = true
+            case "--limit":
+                let raw = try value(after: token, in: tokens, at: &index)
+                guard let limit = Int(raw), limit > 0 else { throw CLIParseError.missingValue(token) }
+                options.limit = limit
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
         }
+        if options.degradedPrivateStore && !hasExplicitStore {
+            options.store = remindersStoreResolver() ?? options.store
+        }
         return options
+    }
+
+    private func parseFormatOnlyOptions(_ tokens: [String]) throws -> OutputFormat {
+        var format = OutputFormat.json
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            guard token == "--format" else { throw CLIParseError.unknownCommand(token) }
+            format = try parseFormat(after: token, in: tokens, at: &index)
+            index += 1
+        }
+        return format
     }
 
     private func parseSafariHistoryOptions(_ tokens: [String]) throws -> SafariHistoryOptions {
@@ -1369,8 +1401,9 @@ Usage:
   icloud-cli photos shared-library [--format json|text] [--photos-store PATH]
   icloud-cli notes list [--folder NAME] [--modified-since ISO8601] [--include-body] [--format json|text] [--notes-store PATH]
   icloud-cli notes accounts|folders|tags|shared [--format json|text] [--notes-store PATH]
-  icloud-cli reminders lists [--format json|text] [--reminders-store PATH]
-  icloud-cli reminders list [--list NAME] [--due-before ISO8601] [--due-after ISO8601] [--completed] [--format json|text] [--reminders-store PATH]
+  icloud-cli reminders authorization [--format json|text]
+  icloud-cli reminders lists [--limit N] [--degraded-private-store] [--format json|text] [--reminders-store PATH]
+  icloud-cli reminders list [--list NAME] [--due-before ISO8601] [--due-after ISO8601] [--completed] [--limit N] [--degraded-private-store] [--format json|text] [--reminders-store PATH]
   icloud-cli reminders flagged|today|scheduled|assigned [--include-notes] [--since ISO8601] [--until ISO8601] [--limit N] [--format json|text] [--reminders-store PATH]
   icloud-cli calendar accounts|list|events [--since ISO8601] [--until ISO8601] [--include-attendees] [--include-notes] [--format json|text] [--calendar-store PATH]
   icloud-cli contacts list [--search QUERY] [--limit N] [--include-notes] [--format json|text] [--addressbook-db PATH]

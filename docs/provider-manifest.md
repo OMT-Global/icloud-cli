@@ -26,6 +26,8 @@ Each provider declares:
 
 The registry is static: it contains no payload records, account identifiers, user paths, permission probes, or other machine-local state. `--format text` renders the same fields for operators.
 
+Provider-specific permission expectations may replace the generic source-kind default. Reminders declares EventKit authorization for its primary reads and Full Disk Access only for its explicit degraded private-store fallback.
+
 ## External control-plane projection
 
 `icloud-cli providers external-manifest --format json` embeds this exact registry in the `providerManifest` field of `icloud-cli.openclaw.external.v1`. The projection adds action-class policy only; it does not repeat per-provider command metadata. See [the OpenClaw control-plane contract](openclaw-skill-contract.md) for wrapper, confirmation, redaction, timeout, retention, and structured-error requirements.
