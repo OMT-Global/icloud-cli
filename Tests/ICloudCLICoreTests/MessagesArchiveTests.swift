@@ -15,7 +15,7 @@ import Testing
 
     #expect(first.status.activeItemCount == 2)
     #expect(second.upsertedCount == 0)
-    #expect(second.status.cursor == "200")
+    #expect(second.status.cursor?.hasPrefix("v1:") == true)
     let hits = try adapter.search(query: "group", includeBodies: false, limit: 10)
     #expect(hits.map(\.chatIdentifier) == ["chat-group"])
     #expect(hits.first?.body == nil)
@@ -24,6 +24,26 @@ import Testing
     try process.run(); process.waitUntilExit()
     let deleted = try adapter.sync(database: database, includeBodies: false, bodyRetentionDays: nil, limit: 100)
     #expect(deleted.tombstonedCount == 1)
+}
+
+@Test func messagesArchivePaginatesMessagesWithEqualTimestamps() throws {
+    let root = try messagesArchiveFixture("equal-timestamps")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let database = root.appendingPathComponent("chat.db")
+    try runMessagesArchiveSQL(database, """
+    CREATE TABLE recent_messages (messageId TEXT, chatIdentifier TEXT, sender TEXT, sentAt TEXT, isFromMe INTEGER, body TEXT);
+    INSERT INTO recent_messages VALUES ('m1', 'chat-one', '+15550001', '100', 0, 'first');
+    INSERT INTO recent_messages VALUES ('m2', 'chat-two', '+15550002', '100', 0, 'second');
+    """)
+    let adapter = MessagesArchiveAdapter(archiveDirectory: root.appendingPathComponent("archive"))
+
+    let first = try adapter.sync(database: database, includeBodies: false, bodyRetentionDays: nil, limit: 1)
+    let second = try adapter.sync(database: database, includeBodies: false, bodyRetentionDays: nil, limit: 1)
+
+    #expect(first.upsertedCount == 1)
+    #expect(second.upsertedCount == 1)
+    #expect(second.status.activeItemCount == 2)
+    #expect(try adapter.search(query: "", includeBodies: false, limit: 10).map(\.messageId) == ["m2", "m1"])
 }
 
 @Test func messagesArchiveBodiesRequireExplicitRetentionAndSearchConfirmation() throws {
@@ -82,6 +102,10 @@ private func makeMessagesArchiveDatabase(_ url: URL) throws {
     INSERT INTO recent_messages VALUES ('m1', 'chat-direct', '+15550001', '100', 0, 'ordinary');
     INSERT INTO recent_messages VALUES ('m2', 'chat-group', '+15550002', '200', 1, 'group secret');
     """
+    try runMessagesArchiveSQL(url, sql)
+}
+
+private func runMessagesArchiveSQL(_ url: URL, _ sql: String) throws {
     let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3"); process.arguments = [url.path, sql]
     try process.run(); process.waitUntilExit()
     #expect(process.terminationStatus == 0)

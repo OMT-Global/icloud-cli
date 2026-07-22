@@ -31,6 +31,40 @@ private struct MessagesArchiveRow: Decodable {
     let body: String?
 }
 
+private struct MessagesArchiveCursor {
+    let sentAt: String
+    let messageId: String?
+
+    init?(storedValue: String?) {
+        guard let storedValue else { return nil }
+        guard storedValue.hasPrefix("v1:") else {
+            self.init(sentAt: storedValue, messageId: nil)
+            return
+        }
+
+        let parts = storedValue.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              let sentAtData = Data(base64Encoded: String(parts[1])),
+              let messageIdData = Data(base64Encoded: String(parts[2])),
+              let sentAt = String(data: sentAtData, encoding: .utf8),
+              let messageId = String(data: messageIdData, encoding: .utf8) else {
+            self.init(sentAt: storedValue, messageId: nil)
+            return
+        }
+        self.init(sentAt: sentAt, messageId: messageId)
+    }
+
+    init(sentAt: String, messageId: String?) {
+        self.sentAt = sentAt
+        self.messageId = messageId
+    }
+
+    var storedValue: String {
+        guard let messageId else { return sentAt }
+        return "v1:\(Data(sentAt.utf8).base64EncodedString()):\(Data(messageId.utf8).base64EncodedString())"
+    }
+}
+
 public struct MessagesArchiveAdapter: Sendable {
     public let archiveDirectory: URL
     private let now: @Sendable () -> Date
@@ -49,7 +83,7 @@ public struct MessagesArchiveAdapter: Sendable {
             retention: ArchiveRetentionPolicy(tombstoneLifetimeSeconds: TimeInterval((bodyRetentionDays ?? 30) * 86_400), maximumRecords: 100_000)
         )
         let previous = try? store.read(providerId: "messages")
-        let rows = try readRows(database: database, after: previous?.cursor, includeBodies: includeBodies, limit: limit)
+        let rows = try readRows(database: database, after: MessagesArchiveCursor(storedValue: previous?.cursor), includeBodies: includeBodies, limit: limit)
         let currentIds = try readAllIds(database: database, limit: limit + 1)
         var records = rows.map { row in
             var fields: [String: ArchiveValue] = [
@@ -72,7 +106,9 @@ public struct MessagesArchiveAdapter: Sendable {
                 records.append(ArchiveInputRecord(id: record.id, sourceModifiedAt: record.sourceModifiedAt, fields: fields))
             }
         }
-        let cursor = rows.compactMap(\.sentAt).max() ?? previous?.cursor
+        let cursor = rows.last.flatMap { row in
+            row.sentAt.map { MessagesArchiveCursor(sentAt: $0, messageId: row.messageId).storedValue }
+        } ?? previous?.cursor
         let values = try database.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let fingerprint = "size:\(values.fileSize ?? 0);modified:\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)"
         let archivedIds = Set(previous?.records.filter { $0.tombstonedAt == nil }.map(\.id) ?? [])
@@ -103,16 +139,16 @@ public struct MessagesArchiveAdapter: Sendable {
             .map { $0 }
     }
 
-    private func readRows(database: URL, after cursor: String?, includeBodies: Bool, limit: Int) throws -> [MessagesArchiveRow] {
+    private func readRows(database: URL, after cursor: MessagesArchiveCursor?, includeBodies: Bool, limit: Int) throws -> [MessagesArchiveRow] {
         let engine = SQLiteSnapshotQueryEngine(source: database)
-        let floor = cursor.map { "WHERE sentAt > '\(sqlLiteral($0))'" } ?? ""
+        let floor = recentMessagesFloor(after: cursor)
         let body = includeBodies ? "body" : "NULL AS body"
         do {
-            return try engine.query("SELECT messageId, chatIdentifier, sender, sentAt, isFromMe, \(body) FROM recent_messages \(floor) ORDER BY sentAt ASC LIMIT \(min(max(limit, 1), 10000));")
+            return try engine.query("SELECT messageId, chatIdentifier, sender, sentAt, isFromMe, \(body) FROM recent_messages \(floor) ORDER BY sentAt ASC, messageId ASC LIMIT \(min(max(limit, 1), 10000));")
         } catch LocalInventoryError.unsupportedSchema {
             throw LocalInventoryError.unsupportedSchema(store: database.path, detail: "unsupported Messages schema")
         } catch {
-            let appleFloor = cursor.map { "WHERE m.date > \(Int64($0) ?? 0)" } ?? ""
+            let appleFloor = appleMessagesFloor(after: cursor)
             let appleBody = includeBodies ? "m.text" : "NULL"
             return try engine.query("""
                 SELECT CAST(m.ROWID AS TEXT) AS messageId,
@@ -123,9 +159,22 @@ public struct MessagesArchiveAdapter: Sendable {
                 LEFT JOIN handle h ON h.ROWID = m.handle_id
                 LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
                 LEFT JOIN chat c ON c.ROWID = cmj.chat_id
-                \(appleFloor) ORDER BY m.date ASC LIMIT \(min(max(limit, 1), 10000));
+                \(appleFloor) ORDER BY m.date ASC, m.ROWID ASC LIMIT \(min(max(limit, 1), 10000));
                 """)
         }
+    }
+
+    private func recentMessagesFloor(after cursor: MessagesArchiveCursor?) -> String {
+        guard let cursor else { return "" }
+        let sentAt = sqlLiteral(cursor.sentAt)
+        guard let messageId = cursor.messageId else { return "WHERE sentAt >= '\(sentAt)'" }
+        return "WHERE (sentAt > '\(sentAt)' OR (sentAt = '\(sentAt)' AND messageId > '\(sqlLiteral(messageId))'))"
+    }
+
+    private func appleMessagesFloor(after cursor: MessagesArchiveCursor?) -> String {
+        guard let cursor, let sentAt = Int64(cursor.sentAt) else { return "" }
+        guard let messageId = cursor.messageId, let rowId = Int64(messageId) else { return "WHERE m.date >= \(sentAt)" }
+        return "WHERE (m.date > \(sentAt) OR (m.date = \(sentAt) AND m.ROWID > \(rowId)))"
     }
 
     private func readAllIds(database: URL, limit: Int) throws -> Set<String> {
