@@ -20,6 +20,22 @@ import Testing
     #expect(report.nextAction?.contains("--scan-limit") == true)
 }
 
+@Test func driveCrawlAtExactScanBudgetIsComplete() throws {
+    let root = try crawlFixture(named: "drive-exact-scan", fileCount: 3)
+    defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+
+    let report = try ICloudDriveInventoryReader(rootDirectory: root).listFilesReport(
+        depth: Int.max,
+        budget: CrawlBudget(scanLimit: 3, wallClockLimitMilliseconds: 5_000)
+    )
+
+    #expect(report.state == .complete)
+    #expect(report.scannedCount == 3)
+    #expect(report.resultCount == 3)
+    #expect(report.totalAvailable == 3)
+    #expect(report.nextAction == nil)
+}
+
 @Test func driveCrawlTimeoutTerminatesBlockedWorker() throws {
     let root = try crawlFixture(named: "drive-worker-timeout", fileCount: 1)
     defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }

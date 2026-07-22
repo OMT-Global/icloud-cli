@@ -430,10 +430,6 @@ private final class DriveWalkBox: @unchecked Sendable {
         }
         state.files.append(file)
         state.scannedCount += 1
-        if state.scannedCount >= scanLimit {
-            state.termination = .partial
-            return false
-        }
         return true
     }
 
