@@ -58,6 +58,24 @@ import Testing
     #expect(options.store.path == "/tmp/reminders.sqlite")
 }
 
+@Test func normalRemindersParsingDoesNotResolvePrivateStore() throws {
+    final class Resolution: @unchecked Sendable { var calls = 0 }
+    let resolution = Resolution()
+    let parser = CLIParser(remindersStoreResolver: {
+        resolution.calls += 1
+        return URL(fileURLWithPath: "/tmp/resolved-reminders.sqlite")
+    })
+
+    _ = try parser.parse(arguments: ["icloud-cli", "reminders", "lists"])
+    _ = try parser.parse(arguments: ["icloud-cli", "reminders", "list", "--list", "Work"])
+    #expect(resolution.calls == 0)
+
+    let parsed = try parser.parse(arguments: ["icloud-cli", "reminders", "lists", "--degraded-private-store"])
+    guard case .remindersLists(let options) = parsed else { Issue.record("Expected reminders lists"); return }
+    #expect(resolution.calls == 1)
+    #expect(options.store.path == "/tmp/resolved-reminders.sqlite")
+}
+
 @Test func commandRunnerBoundsDegradedPrivateStoreResults() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("icloud-cli-reminders-limit-\(UUID().uuidString)")
     let database = root.appendingPathComponent("reminders.sqlite")

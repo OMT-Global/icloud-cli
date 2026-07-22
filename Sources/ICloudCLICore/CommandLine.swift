@@ -199,7 +199,7 @@ public struct RemindersListOptions: Equatable, Sendable {
     public var degradedPrivateStore: Bool
     public var limit: Int
 
-    public init(format: OutputFormat = .json, store: URL = AppleRemindersStoreResolver().database() ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false, degradedPrivateStore: Bool = false, limit: Int = 200) {
+    public init(format: OutputFormat = .json, store: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Reminders/reminders.sqlite"), list: String? = nil, dueBefore: String? = nil, dueAfter: String? = nil, includeCompleted: Bool = false, degradedPrivateStore: Bool = false, limit: Int = 200) {
         self.format = format
         self.store = store
         self.list = list
@@ -574,7 +574,11 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
 }
 
 public struct CLIParser: Sendable {
-    public init() {}
+    private let remindersStoreResolver: @Sendable () -> URL?
+
+    public init(remindersStoreResolver: @escaping @Sendable () -> URL? = { AppleRemindersStoreResolver().database() }) {
+        self.remindersStoreResolver = remindersStoreResolver
+    }
 
     public func parse(arguments: [String]) throws -> CLICommand {
         var tokens = Array(arguments.dropFirst())
@@ -1120,12 +1124,14 @@ public struct CLIParser: Sendable {
     }
 
     private func parseRemindersListOptions(_ tokens: [String]) throws -> RemindersListOptions {
-        var options = RemindersListOptions(); var index = 0
+        var options = RemindersListOptions(); var hasExplicitStore = false; var index = 0
         while index < tokens.count {
             let token = tokens[index]
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
-            case "--reminders-store": options.store = try parseURL(after: token, in: tokens, at: &index)
+            case "--reminders-store":
+                options.store = try parseURL(after: token, in: tokens, at: &index)
+                hasExplicitStore = true
             case "--list": options.list = try value(after: token, in: tokens, at: &index)
             case "--due-before": options.dueBefore = try value(after: token, in: tokens, at: &index)
             case "--due-after": options.dueAfter = try value(after: token, in: tokens, at: &index)
@@ -1138,6 +1144,9 @@ public struct CLIParser: Sendable {
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
+        }
+        if options.degradedPrivateStore && !hasExplicitStore {
+            options.store = remindersStoreResolver() ?? options.store
         }
         return options
     }
