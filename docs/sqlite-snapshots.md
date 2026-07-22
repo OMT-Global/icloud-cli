@@ -2,9 +2,9 @@
 
 Apple applications often keep committed SQLite state across a database file and its write-ahead log. Querying the live path directly can produce inconsistent reads, wait indefinitely on a busy store, or interact with an Apple-owned database in ways the CLI does not intend.
 
-`SQLiteSnapshotQueryEngine` creates a mode-`0700` temporary directory, copies the database and any present `-wal` and `-shm` companions as mode-`0600` files, and queries only that private copy. The `sqlite3` process runs with `-readonly`, `PRAGMA query_only=ON`, a one-second busy timeout, and a ten-second process timeout. The snapshot, query output, and error output are deleted before the call returns or throws. Copied contents are never logged.
+`SQLiteSnapshotQueryEngine` creates a mode-`0700` temporary directory and asks SQLite to create a consistent private snapshot with `VACUUM INTO`. SQLite coordinates the main database and WAL under one read view, so a live writer cannot leave a mixed-generation main/WAL copy. The resulting snapshot is mode-`0600` and queried with `-readonly`, `PRAGMA query_only=ON`, a one-second busy timeout, and a ten-second process timeout. The snapshot, query output, and error output are deleted before the call returns or throws. Snapshot contents are never logged.
 
-Errors retain the original store path and distinguish missing stores, permission denial, unsupported schemas, locked or busy stores, and timeouts. The implementation does not checkpoint, lock, vacuum, or write to the Apple-owned source.
+Errors retain the original store path and distinguish missing stores, permission denial, unsupported schemas, locked or busy stores, and timeouts. `VACUUM INTO` reads the Apple-owned source without checkpointing, mutating, or creating source-side files.
 
 ## Migration status
 

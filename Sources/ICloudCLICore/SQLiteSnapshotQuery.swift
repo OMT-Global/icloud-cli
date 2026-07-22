@@ -107,26 +107,54 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
 
         let snapshot = directory.appendingPathComponent("snapshot.sqlite")
         do {
-            try copy(source, to: snapshot)
-            for suffix in ["-wal", "-shm"] {
-                let companion = URL(fileURLWithPath: source.path + suffix)
-                guard FileManager.default.fileExists(atPath: companion.path) else { continue }
-                try copy(companion, to: URL(fileURLWithPath: snapshot.path + suffix))
-            }
+            try createSQLiteSnapshot(from: source, to: snapshot)
+        } catch let error as LocalInventoryError {
+            throw error
         } catch {
-            if isPermissionError(error) { throw LocalInventoryError.permissionDenied(reportedStore) }
             throw LocalInventoryError.sqliteFailure("Unable to create SQLite snapshot")
         }
         return try operation(snapshot, directory)
     }
 
-    private func copy(_ source: URL, to destination: URL) throws {
-        try FileManager.default.copyItem(at: source, to: destination)
+    private func createSQLiteSnapshot(from source: URL, to destination: URL) throws {
+        let process = Process()
+        let errors = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [
+            "-cmd", ".timeout \(busyTimeoutMilliseconds)",
+            source.path,
+            "VACUUM INTO '\(sqliteLiteral(destination.path))';",
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+
+        let completed = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in completed.signal() }
+        do {
+            try process.run()
+        } catch {
+            throw LocalInventoryError.sqliteFailure(error.localizedDescription)
+        }
+        guard completed.wait(timeout: .now() + timeout) == .success else {
+            if process.isRunning { process.terminate() }
+            if completed.wait(timeout: .now() + 1) != .success, process.isRunning {
+                Darwin.kill(process.processIdentifier, SIGKILL)
+                _ = completed.wait(timeout: .now() + 1)
+            }
+            throw LocalInventoryError.queryTimeout(reportedStore)
+        }
+
+        let errorData = errors.fileHandleForReading.readDataToEndOfFile()
+        guard process.terminationStatus == 0 else {
+            if String(decoding: errorData, as: UTF8.self).lowercased().contains("unable to open database") {
+                throw LocalInventoryError.permissionDenied(reportedStore)
+            }
+            throw sqliteError(from: errorData, store: reportedStore)
+        }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
     }
 
-    private func isPermissionError(_ error: Error) -> Bool {
-        let cocoa = error as NSError
-        return cocoa.domain == NSCocoaErrorDomain && [NSFileReadNoPermissionError, NSFileWriteNoPermissionError].contains(cocoa.code)
+    private func sqliteLiteral(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
     }
 }
