@@ -140,6 +140,22 @@ import Testing
         try ProviderArchiveStore(rootDirectory: root).sync(archiveBatch(records: [record]), budget: .defaultPolling)
     }
 }
+@Test func archiveRejectsSensitiveFieldAliases() throws {
+    let aliases = ["bodyText", "htmlBody", "mediaURL"]
+
+    for alias in aliases {
+        let root = try archiveTestDirectory(named: "sensitive-alias-\(alias)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: [
+            alias: .string("private"),
+        ])
+
+        #expect(throws: ProviderArchiveError.sensitiveField(alias)) {
+            try ProviderArchiveStore(rootDirectory: root).sync(archiveBatch(records: [record]), budget: .defaultPolling)
+        }
+    }
+}
+
 @Test func archiveSyncReturnsPartialAtExplicitScanBudget() throws {
     let root = try archiveTestDirectory(named: "bounded")
     defer { try? FileManager.default.removeItem(at: root) }

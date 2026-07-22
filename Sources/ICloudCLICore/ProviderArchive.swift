@@ -320,12 +320,17 @@ public struct ProviderArchiveStore: Sendable {
     }
 
     private func sensitiveField(in fields: [String: ArchiveValue]) -> String? {
-        let forbidden = Set(["body", "content", "mediadata", "pixeldata", "audiodata", "attachment", "attachments"])
         for (key, value) in fields {
-            if forbidden.contains(key.lowercased()) { return key }
+            if isSensitiveFieldName(key) { return key }
             if let match = sensitiveField(in: value) { return match }
         }
         return nil
+    }
+
+    private func isSensitiveFieldName(_ key: String) -> Bool {
+        let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
+        let sensitiveTerms = ["body", "content", "media", "pixel", "audio", "attachment"]
+        return sensitiveTerms.contains { normalized.contains($0) }
     }
 
     private func sensitiveField(in value: ArchiveValue) -> String? {
