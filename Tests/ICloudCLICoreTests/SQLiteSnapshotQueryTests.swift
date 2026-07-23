@@ -32,7 +32,7 @@ private struct SnapshotValueRow: Decodable, Equatable { let value: String }
     #expect(rows == [SnapshotValueRow(value: "wal-row")])
 }
 
-@Test func snapshotQueryFollowsSymlinkedStoreAndCopiesWALCompanions() throws {
+@Test func snapshotQueryFollowsSymlinkedStoreWithCoherentWALSnapshot() throws {
     let root = try temporarySQLiteSnapshotDirectory(named: "symlink-wal")
     defer { try? FileManager.default.removeItem(at: root) }
     let liveStore = root.appendingPathComponent("live/source.db")
@@ -45,7 +45,7 @@ private struct SnapshotValueRow: Decodable, Equatable { let value: String }
     let engine = SQLiteSnapshotQueryEngine(source: linkedStore)
     try engine.withSnapshot { snapshot, workspace in
         #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: snapshot.path)) == nil)
-        #expect(FileManager.default.fileExists(atPath: snapshot.path + "-wal"))
+        #expect(!FileManager.default.fileExists(atPath: snapshot.path + "-wal"))
         let rows: [SnapshotValueRow] = try engine.querySnapshot(snapshot, workspace: workspace, sql: "SELECT value FROM values_table ORDER BY value;")
         #expect(rows == [SnapshotValueRow(value: "wal-row")])
     }
