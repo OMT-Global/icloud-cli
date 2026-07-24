@@ -1,5 +1,33 @@
 import Foundation
 
+public struct ArchiveSyncOptions: Equatable, Sendable {
+    public var providerId: String
+    public var input: URL
+    public var archiveDirectory: URL
+    public var budget: CrawlBudget
+    public var format: OutputFormat
+
+    public init(providerId: String, input: URL, archiveDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives"), budget: CrawlBudget = .defaultPolling, format: OutputFormat = .json) {
+        self.providerId = providerId
+        self.input = input
+        self.archiveDirectory = archiveDirectory
+        self.budget = budget
+        self.format = format
+    }
+}
+
+public struct ArchiveStatusOptions: Equatable, Sendable {
+    public var providerId: String
+    public var archiveDirectory: URL
+    public var format: OutputFormat
+
+    public init(providerId: String, archiveDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives"), format: OutputFormat = .json) {
+        self.providerId = providerId
+        self.archiveDirectory = archiveDirectory
+        self.format = format
+    }
+}
+
 public enum OutputFormat: String, Sendable {
     case json
     case text
@@ -51,13 +79,15 @@ public struct DriveListOptions: Equatable, Sendable {
     public var path: String?
     public var depth: Int
     public var showStatus: Bool
+    public var budget: CrawlBudget
 
-    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2, showStatus: Bool = false) {
+    public init(format: OutputFormat = .json, rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"), path: String? = nil, depth: Int = 2, showStatus: Bool = false, budget: CrawlBudget = .defaultDrive) {
         self.format = format
         self.rootDirectory = rootDirectory
         self.path = path
         self.depth = depth
         self.showStatus = showStatus
+        self.budget = budget
     }
 }
 
@@ -251,6 +281,27 @@ public struct MessagesOptions: Equatable, Sendable {
     }
 }
 
+public struct MessagesArchiveOptions: Equatable, Sendable {
+    public var format: OutputFormat = .json
+    public var chatDatabase = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Messages/chat.db")
+    public var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+    public var confirmSensitive = false
+    public var includeBody = false
+    public var bodyRetentionDays: Int?
+    public var limit = 1_000
+    public init() {}
+}
+
+public struct MessagesSearchOptions: Equatable, Sendable {
+    public let query: String
+    public var format: OutputFormat = .json
+    public var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+    public var confirmSensitive = false
+    public var includeBody = false
+    public var limit = 50
+    public init(query: String) { self.query = query }
+}
+
 public struct ContactsListOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var addressBookDatabase: URL
@@ -298,12 +349,14 @@ public struct WatchOptions: Equatable, Sendable {
     public var outputDirectory: URL
     public var commands: [String]
     public var once: Bool
+    public var budget: CrawlBudget
 
-    public init(intervalSeconds: Int = 60, outputDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/cache"), commands: [String] = CacheWatchStore.defaultCommands, once: Bool = false) {
+    public init(intervalSeconds: Int = 60, outputDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/cache"), commands: [String] = CacheWatchStore.defaultCommands, once: Bool = false, budget: CrawlBudget = .defaultPolling) {
         self.intervalSeconds = intervalSeconds
         self.outputDirectory = outputDirectory
         self.commands = commands
         self.once = once
+        self.budget = budget
     }
 }
 
@@ -449,6 +502,7 @@ public struct MetadataOptions: Equatable, Sendable {
     public var raw: Bool
     public var downloadedOnly: Bool
     public var cloudOnly: Bool
+    public var crawlBudget: CrawlBudget
 
     public init(
         format: OutputFormat = .json,
@@ -481,7 +535,8 @@ public struct MetadataOptions: Equatable, Sendable {
         includeURLs: Bool = false,
         raw: Bool = false,
         downloadedOnly: Bool = false,
-        cloudOnly: Bool = false
+        cloudOnly: Bool = false,
+        crawlBudget: CrawlBudget = .defaultDrive
     ) {
         self.format = format
         self.store = store
@@ -514,10 +569,13 @@ public struct MetadataOptions: Equatable, Sendable {
         self.raw = raw
         self.downloadedOnly = downloadedOnly
         self.cloudOnly = cloudOnly
+        self.crawlBudget = crawlBudget
     }
 }
 
 public enum CLICommand: Equatable, Sendable {
+    case archiveStatus(ArchiveStatusOptions)
+    case archiveSync(ArchiveSyncOptions)
     case cacheRead(CacheOptions)
     case cacheStatus(CacheOptions)
     case cloudTabsProbe(CloudTabsProbeOptions)
@@ -531,6 +589,8 @@ public enum CLICommand: Equatable, Sendable {
     case mapsRecents(MapsOptions)
     case messagesConversations(MessagesOptions)
     case messagesRecent(MessagesOptions)
+    case messagesArchive(MessagesArchiveOptions)
+    case messagesSearch(MessagesSearchOptions)
     case metadata(MetadataCommand, MetadataOptions)
     case newsHistory(NewsOptions)
     case newsTopics(NewsOptions)
@@ -586,6 +646,15 @@ public struct CLIParser: Sendable {
         if tokens == ["--version"] || tokens == ["-V"] { return .version }
 
         let topCommand = tokens.removeFirst()
+        if topCommand == "archive" {
+            guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("archive") }
+            tokens.removeFirst()
+            switch subcommand {
+            case "sync": return .archiveSync(try parseArchiveSyncOptions(tokens))
+            case "status": return .archiveStatus(try parseArchiveStatusOptions(tokens))
+            default: throw CLIParseError.unknownCommand("archive \(subcommand)")
+            }
+        }
         if topCommand == "providers" {
             guard let subcommand = tokens.first else { throw CLIParseError.unknownCommand("providers") }
             tokens.removeFirst()
@@ -807,8 +876,13 @@ public struct CLIParser: Sendable {
             guard let messagesCommand = tokens.first else { throw CLIParseError.unknownCommand("messages") }
             tokens.removeFirst()
             switch messagesCommand {
+            case "archive": return .messagesArchive(try parseMessagesArchiveOptions(tokens))
             case "conversations": return .messagesConversations(try parseMessagesOptions(tokens))
             case "recent": return .messagesRecent(try parseMessagesOptions(tokens))
+            case "search":
+                guard let query = tokens.first else { throw CLIParseError.missingValue("query") }
+                tokens.removeFirst()
+                return .messagesSearch(try parseMessagesSearchOptions(query: query, tokens: tokens))
             default: throw CLIParseError.unknownCommand((["messages", messagesCommand] + tokens).joined(separator: " "))
             }
         }
@@ -897,6 +971,45 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseArchiveSyncOptions(_ tokens: [String]) throws -> ArchiveSyncOptions {
+        guard let providerId = tokens.first, !providerId.hasPrefix("--") else { throw CLIParseError.missingValue("PROVIDER") }
+        var input: URL?
+        var archiveDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".icloud-cli/archives")
+        var budget = CrawlBudget.defaultPolling
+        var format = OutputFormat.json
+        var index = 1
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--input": input = try parseURL(after: token, in: tokens, at: &index)
+            case "--archive-dir": archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--scan-limit": budget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: budget.wallClockLimitMilliseconds)
+            case "--timeout-ms": budget = CrawlBudget(scanLimit: budget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
+            case "--format": format = try parseFormat(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        guard let input else { throw CLIParseError.missingValue("--input") }
+        return ArchiveSyncOptions(providerId: providerId, input: input, archiveDirectory: archiveDirectory, budget: budget, format: format)
+    }
+
+    private func parseArchiveStatusOptions(_ tokens: [String]) throws -> ArchiveStatusOptions {
+        guard let providerId = tokens.first, !providerId.hasPrefix("--") else { throw CLIParseError.missingValue("PROVIDER") }
+        var options = ArchiveStatusOptions(providerId: providerId)
+        var index = 1
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseSafariBookmarksOptions(_ tokens: [String]) throws -> SafariBookmarksOptions {
         var options = SafariBookmarksOptions(); var index = 0
         while index < tokens.count {
@@ -940,6 +1053,10 @@ public struct CLIParser: Sendable {
             case "--icloud-root": options.rootDirectory = try parseURL(after: token, in: tokens, at: &index)
             case "--path": options.path = try value(after: token, in: tokens, at: &index)
             case "--show-status": options.showStatus = true
+            case "--scan-limit":
+                options.budget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: options.budget.wallClockLimitMilliseconds)
+            case "--timeout-ms":
+                options.budget = CrawlBudget(scanLimit: options.budget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
             case "--depth":
                 let rawValue = try value(after: token, in: tokens, at: &index)
                 guard let depth = Int(rawValue), depth >= 0 else { throw CLIParseError.missingValue(token) }
@@ -1201,6 +1318,42 @@ public struct CLIParser: Sendable {
         return options
     }
 
+    private func parseMessagesArchiveOptions(_ tokens: [String]) throws -> MessagesArchiveOptions {
+        var options = MessagesArchiveOptions(); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--chat-db": options.chatDatabase = try parseURL(after: token, in: tokens, at: &index)
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--include-body": options.includeBody = true
+            case "--body-retention-days": options.bodyRetentionDays = Int(try value(after: token, in: tokens, at: &index))
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
+    private func parseMessagesSearchOptions(query: String, tokens: [String]) throws -> MessagesSearchOptions {
+        var options = MessagesSearchOptions(query: query); var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            switch token {
+            case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
+            case "--archive-dir": options.archiveDirectory = try parseURL(after: token, in: tokens, at: &index)
+            case "--confirm-sensitive": options.confirmSensitive = true
+            case "--include-body": options.includeBody = true
+            case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            default: throw CLIParseError.unknownCommand(token)
+            }
+            index += 1
+        }
+        return options
+    }
+
     private func parseContactsListOptions(_ tokens: [String]) throws -> ContactsListOptions {
         var options = ContactsListOptions(); var index = 0
         while index < tokens.count {
@@ -1264,6 +1417,10 @@ public struct CLIParser: Sendable {
                     .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             case "--once": options.once = true
+            case "--scan-limit":
+                options.budget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: options.budget.wallClockLimitMilliseconds)
+            case "--timeout-ms":
+                options.budget = CrawlBudget(scanLimit: options.budget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
@@ -1334,6 +1491,10 @@ public struct CLIParser: Sendable {
                 let limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
                 options.limit = limit
                 options.driveStatusLimit = limit
+            case "--scan-limit":
+                options.crawlBudget = CrawlBudget(scanLimit: try positiveInteger(after: token, in: tokens, at: &index), wallClockLimitMilliseconds: options.crawlBudget.wallClockLimitMilliseconds)
+            case "--timeout-ms":
+                options.crawlBudget = CrawlBudget(scanLimit: options.crawlBudget.scanLimit, wallClockLimitMilliseconds: try positiveInteger(after: token, in: tokens, at: &index))
             case "--confirm-sensitive": options.confirmSensitive = true
             case "--include-attendees": options.includeAttendees = true
             case "--include-coordinates": options.includeCoordinates = true
@@ -1354,6 +1515,12 @@ public struct CLIParser: Sendable {
         let rawValue = try value(after: option, in: tokens, at: &index)
         guard let format = OutputFormat(rawValue: rawValue) else { throw CLIParseError.invalidFormat(rawValue) }
         return format
+    }
+
+    private func positiveInteger(after option: String, in tokens: [String], at index: inout Int) throws -> Int {
+        let rawValue = try value(after: option, in: tokens, at: &index)
+        guard let value = Int(rawValue), value > 0 else { throw CLIParseError.missingValue(option) }
+        return value
     }
 
     private func parseURL(after option: String, in tokens: [String], at index: inout Int) throws -> URL {
@@ -1377,6 +1544,8 @@ icloud-cli \(version)
 Created by OMT-Global.
 
 Usage:
+  icloud-cli archive sync PROVIDER --input PATH [--archive-dir PATH] [--scan-limit N] [--timeout-ms N] [--format json|text]
+  icloud-cli archive status PROVIDER [--archive-dir PATH] [--format json|text]
   icloud-cli providers list [--format json|text]
   icloud-cli providers external-manifest [--format json|text]
   icloud-cli snapshot [--include COMMAND,...] [--redaction safe|raw] [--output PATH] [--format json|text]
@@ -1388,12 +1557,12 @@ Usage:
   icloud-cli devices list [--format json|text] [--cache-file PATH]
   icloud-cli wallet passes [--type PASS_TYPE] [--active-only] [--format json|text] [--passes-dir PATH]
   icloud-cli handoff list [--limit N] [--format json|text] [--handoff-dir PATH]
-  icloud-cli drive list [--path PATH] [--depth N] [--show-status] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive list [--path PATH] [--depth N] [--scan-limit N] [--timeout-ms N] [--show-status] [--format json|text] [--icloud-root PATH]
   icloud-cli drive containers [--sort-by size|modified|name] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive status [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive errors [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive shared [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
-  icloud-cli drive recents [--since ISO8601] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive status [--path PATH] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive errors [--path PATH] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive shared [--path PATH] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
+  icloud-cli drive recents [--since ISO8601] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
   icloud-cli photos list [--limit N] [--format json|text] [--photos-library PATH]
@@ -1412,6 +1581,8 @@ Usage:
   icloud-cli mail recent [--confirm-sensitive] [--account NAME] [--mailbox NAME] [--limit N] [--format json|text] [--mail-store PATH]
   icloud-cli messages conversations [--limit N] [--format json|text] [--chat-db PATH]
   icloud-cli messages recent [--confirm-sensitive] [--include-body] [--since ISO8601] [--limit N] [--format json|text] [--chat-db PATH]
+  icloud-cli messages archive --confirm-sensitive [--include-body --body-retention-days N] [--limit N] [--format json|text] [--chat-db PATH] [--archive-dir PATH]
+  icloud-cli messages search QUERY [--include-body --confirm-sensitive] [--limit N] [--format json|text] [--archive-dir PATH]
   icloud-cli maps favorites [--format json|text] [--maps-store PATH]
   icloud-cli maps recents [--limit N] [--format json|text] [--maps-store PATH]
   icloud-cli news history [--since ISO8601] [--limit N] [--format json|text] [--news-store PATH]
@@ -1425,9 +1596,9 @@ Usage:
   icloud-cli stocks watchlist|groups [--format json|text] [--stocks-store PATH]
   icloud-cli weather favorites [--include-coordinates] [--format json|text] [--weather-store PATH]
   icloud-cli tags list [--format json|text] [--store PATH]
-  icloud-cli tags items --tag NAME [--path PATH] [--limit N] [--format json|text] [--icloud-root PATH]
+  icloud-cli tags items --tag NAME [--path PATH] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
   icloud-cli permissions doctor [--format json|text]
-  icloud-cli watch [--interval SECONDS] [--output-dir PATH] [--commands COMMAND,...] [--once]
+  icloud-cli watch [--interval SECONDS] [--scan-limit N] [--timeout-ms N] [--output-dir PATH] [--commands COMMAND,...] [--once]
   icloud-cli cache read COMMAND [--format json|text] [--output-dir PATH]
   icloud-cli cache status [--format json|text] [--output-dir PATH]
   icloud-cli safari tabs [--source all|current-session|last-session] [--profile NAME|all] [--format json|text] [--safari-dir PATH]
@@ -1441,6 +1612,7 @@ Usage:
   icloud-cli safari extensions list [--profile NAME] [--format json|text] [--safari-store PATH]
 
 Commands:
+  archive        Incrementally sync and inspect private per-provider metadata archives.
   providers list List the versioned, machine-readable provider capability manifest.
   providers external-manifest Emit the local OpenClaw control-plane contract.
   snapshot       Emit a conservative redacted operator status payload.
@@ -1471,6 +1643,10 @@ Commands:
                  List message conversation metadata without message bodies.
   messages recent
                  List recent messages only after --confirm-sensitive.
+  messages archive
+                 Incrementally archive bounded message metadata from a consistent snapshot.
+  messages search
+                 Search the local Messages archive; bodies remain separately gated.
   maps favorites List Maps saved-place metadata.
   maps recents   List Maps recent-place metadata.
   news history   List News reading-history metadata.

@@ -22,6 +22,18 @@ public struct CommandRunner: Sendable {
     public func run(arguments: [String]) -> Int32 {
         do {
             switch try parser.parse(arguments: arguments) {
+            case .archiveSync(let options):
+                let values = try options.input.resourceValues(forKeys: [.fileSizeKey])
+                if let size = values.fileSize, size > 16 * 1_024 * 1_024 { throw ProviderArchiveError.inputTooLarge(Int64(size)) }
+                let batch = try JSONDecoder().decode(ArchiveSyncBatch.self, from: Data(contentsOf: options.input))
+                guard batch.providerId == options.providerId else { throw ProviderArchiveError.providerMismatch(expected: options.providerId, actual: batch.providerId) }
+                let result = try ProviderArchiveStore(rootDirectory: options.archiveDirectory).sync(batch, budget: options.budget)
+                output(try render(result, format: options.format))
+                return 0
+            case .archiveStatus(let options):
+                let status = try ProviderArchiveStore(rootDirectory: options.archiveDirectory).status(providerId: options.providerId)
+                output(try render(status, format: options.format))
+                return 0
             case .help:
                 output(CLIHelp.root())
                 return 0
@@ -55,8 +67,8 @@ public struct CommandRunner: Sendable {
                 output(try render(containers, format: options.format))
                 return 0
             case .driveList(let options):
-                let files = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listFiles(path: options.path, depth: options.depth)
-                output(try render(files, format: options.format))
+                let report = try ICloudDriveInventoryReader(rootDirectory: options.rootDirectory).listFilesReport(path: options.path, depth: options.depth, budget: options.budget)
+                output(try render(report, format: options.format))
                 return 0
             case .focusStatus(let options):
                 let status = try FocusStatusReader(focusDirectory: options.focusDirectory).readStatus()
@@ -81,6 +93,15 @@ public struct CommandRunner: Sendable {
             case .messagesRecent(let options):
                 let messages = try LocalSQLiteInventoryReader(database: options.chatDatabase).recentMessages(confirmSensitive: options.confirmSensitive, includeBody: options.includeBody, since: options.since, limit: options.limit)
                 output(try render(messages, format: options.format))
+                return 0
+            case .messagesArchive(let options):
+                guard options.confirmSensitive else { throw LocalInventoryError.sensitiveConfirmationRequired("icloud-cli messages archive") }
+                let result = try MessagesArchiveAdapter(archiveDirectory: options.archiveDirectory).sync(database: options.chatDatabase, includeBodies: options.includeBody, bodyRetentionDays: options.bodyRetentionDays, limit: options.limit)
+                output(try render(result, format: options.format))
+                return 0
+            case .messagesSearch(let options):
+                let hits = try MessagesArchiveAdapter(archiveDirectory: options.archiveDirectory).search(query: options.query, includeBodies: options.includeBody, confirmSensitive: options.confirmSensitive, limit: options.limit)
+                output(try render(hits, format: options.format))
                 return 0
             case .metadata(let command, let options):
                 output(try runMetadata(command: command, options: options))
@@ -170,7 +191,7 @@ public struct CommandRunner: Sendable {
             case .watch(let options):
                 let store = CacheWatchStore(outputDirectory: options.outputDirectory)
                 repeat {
-                    let status = try store.refresh(commands: options.commands)
+                    let status = try store.refresh(commands: options.commands, budget: options.budget)
                     output(try render(status, format: .json))
                     if options.once { break }
                     Thread.sleep(forTimeInterval: TimeInterval(options.intervalSeconds))
@@ -218,23 +239,24 @@ public struct CommandRunner: Sendable {
             return rendered
         case .driveStatus:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.syncStatus(path: options.path, limit: options.driveStatusLimit), format: options.format)
+            let budget = options.driveStatusLimit.map { CrawlBudget(scanLimit: $0, wallClockLimitMilliseconds: options.crawlBudget.wallClockLimitMilliseconds) } ?? options.crawlBudget
+            return try render(try reader.syncStatusReport(path: options.path, budget: budget), format: options.format)
         case .driveErrors:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.errorFiles(path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.errorFilesReport(path: options.path, limit: options.limit, budget: options.crawlBudget), format: options.format)
         case .driveShared:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.sharedItems(path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.sharedItemsReport(path: options.path, limit: options.limit, budget: options.crawlBudget), format: options.format)
         case .driveRecents:
             let reader = ICloudDriveInventoryReader(rootDirectory: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.recentFiles(since: options.since, limit: options.limit), format: options.format)
+            return try render(try reader.recentFilesReport(since: options.since, limit: options.limit, budget: options.crawlBudget), format: options.format)
         case .tagsList:
             let reader = FinderTagsReader(preferencesFile: options.store ?? FinderTagsStoreResolver().resolvedPreferencesFile(), driveRoot: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
             return try render(try reader.listTags(), format: options.format)
         case .taggedItems:
             guard let tag = options.tag else { throw CLIParseError.missingValue("--tag") }
             let reader = FinderTagsReader(preferencesFile: options.store ?? FinderTagsStoreResolver().resolvedPreferencesFile(), driveRoot: options.rootDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents"))
-            return try render(try reader.items(tag: tag, path: options.path, limit: options.limit), format: options.format)
+            return try render(try reader.itemsReport(tag: tag, path: options.path, limit: options.limit, budget: options.crawlBudget), format: options.format)
         default:
             let store = options.store ?? LocalMetadataStoreReader.defaultStore(for: command)
             let rows = try LocalMetadataStoreReader(database: store).rows(for: command, options: options)

@@ -9,6 +9,7 @@ print command payloads because many commands touch local private metadata.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import subprocess
 import sys
@@ -28,12 +29,12 @@ def command_catalog(cache_dir: str, tag: str) -> list[tuple[str, list[str]]]:
         ("devices list", ["devices", "list", "--format", "json"]),
         ("wallet passes", ["wallet", "passes", "--format", "json"]),
         ("handoff list", ["handoff", "list", "--limit", "10", "--format", "json"]),
-        ("drive list", ["drive", "list", "--depth", "1", "--format", "json"]),
+        ("drive list", ["drive", "list", "--depth", "1", "--scan-limit", "2000", "--timeout-ms", "10000", "--format", "json"]),
         ("drive containers", ["drive", "containers", "--sort-by", "name", "--format", "json"]),
-        ("drive status", ["drive", "status", "--limit", "25", "--format", "json"]),
-        ("drive errors", ["drive", "errors", "--limit", "25", "--format", "json"]),
-        ("drive shared", ["drive", "shared", "--limit", "25", "--format", "json"]),
-        ("drive recents", ["drive", "recents", "--limit", "25", "--format", "json"]),
+        ("drive status", ["drive", "status", "--scan-limit", "2000", "--timeout-ms", "10000", "--format", "json"]),
+        ("drive errors", ["drive", "errors", "--limit", "25", "--scan-limit", "2000", "--timeout-ms", "10000", "--format", "json"]),
+        ("drive shared", ["drive", "shared", "--limit", "25", "--scan-limit", "2000", "--timeout-ms", "10000", "--format", "json"]),
+        ("drive recents", ["drive", "recents", "--limit", "25", "--scan-limit", "2000", "--timeout-ms", "10000", "--format", "json"]),
         ("shortcuts list", ["shortcuts", "list", "--format", "json"]),
         ("photos screenshots", ["photos", "screenshots", "--format", "json"]),
         ("photos list", ["photos", "list", "--limit", "25", "--format", "json"]),
@@ -81,7 +82,7 @@ def command_catalog(cache_dir: str, tag: str) -> list[tuple[str, list[str]]]:
         ("stocks groups", ["stocks", "groups", "--format", "json"]),
         ("weather favorites", ["weather", "favorites", "--format", "json"]),
         ("tags list", ["tags", "list", "--format", "json"]),
-        ("tags items", ["tags", "items", "--tag", tag, "--limit", "25", "--format", "json"]),
+        ("tags items", ["tags", "items", "--tag", tag, "--limit", "25", "--scan-limit", "2000", "--timeout-ms", "10000", "--format", "json"]),
         ("permissions doctor", ["permissions", "doctor", "--format", "json"]),
         ("safari tabs", ["safari", "tabs", "--source", "all", "--format", "json"]),
         ("safari history", ["safari", "history", "--confirm-sensitive", "--limit", "10", "--redact-urls", "--format", "json"]),
@@ -93,7 +94,7 @@ def command_catalog(cache_dir: str, tag: str) -> list[tuple[str, list[str]]]:
         ("safari profiles list", ["safari", "profiles", "list", "--format", "json"]),
         ("safari extensions list", ["safari", "extensions", "list", "--format", "json"]),
         ("cache status", ["cache", "status", "--format", "json", "--output-dir", cache_dir]),
-        ("watch once", ["watch", "--once", "--output-dir", cache_dir]),
+        ("watch once", ["watch", "--once", "--scan-limit", "2000", "--timeout-ms", "10000", "--output-dir", cache_dir]),
         ("cache read drive-list", ["cache", "read", "drive-list", "--format", "json", "--output-dir", cache_dir]),
     ]
 
@@ -102,6 +103,9 @@ def payload_shape(payload: Any) -> tuple[int, str, str]:
     if isinstance(payload, list):
         return len(payload), "array", ""
     if isinstance(payload, dict):
+        if payload.get("schemaVersion") == "icloud-cli.crawl.v1" and "data" in payload:
+            count, shape, _ = payload_shape(payload["data"])
+            return count, f"crawl:{shape}", scalar_note(payload)
         for key in (
             "items",
             "files",
@@ -178,7 +182,10 @@ def classify(exe: Path, args: list[str], timeout: int) -> tuple[str, str, int, s
         return "EMPTY", "0", 0, "-", "no stdout"
 
     try:
-        count, shape, note = payload_shape(json.loads(stdout))
+        payload = json.loads(stdout)
+        count, shape, note = payload_shape(payload)
+        if isinstance(payload, dict) and payload.get("state") == "timeout":
+            return "TIMEOUT", "0", count, shape, note
         status = "OK_DATA" if count > 0 else "OK_EMPTY"
         return status, "0", count, shape, note
     except json.JSONDecodeError:
@@ -198,10 +205,24 @@ def main() -> int:
         return 2
 
     with tempfile.TemporaryDirectory(prefix="icloud-cli-live-cache-") as cache_dir:
+        totals: Counter[str] = Counter()
         print("command\tstatus\texit\tcount\tshape\tnote")
         for name, command_args in command_catalog(cache_dir, args.tag):
             status, exit_code, count, shape, note = classify(exe, command_args, args.timeout)
             print(f"{name}\t{status}\t{exit_code}\t{count}\t{shape}\t{note}")
+            if status == "TIMEOUT":
+                totals["timeout"] += 1
+            elif status == "FAIL":
+                totals["fail"] += 1
+            elif status in {"EMPTY", "OK_EMPTY"}:
+                totals["empty"] += 1
+            else:
+                totals["pass"] += 1
+        print(
+            "summary\t"
+            f"pass={totals['pass']}\tempty={totals['empty']}\t"
+            f"fail={totals['fail']}\ttimeout={totals['timeout']}"
+        )
 
     return 0
 
