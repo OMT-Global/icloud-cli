@@ -22,6 +22,22 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
         self.reportedStore = reportedStore ?? source.path
     }
 
+    public static func production(
+        source: URL,
+        timeout: TimeInterval = 10,
+        busyTimeoutMilliseconds: Int = 1_000,
+        temporaryRoot: URL = FileManager.default.temporaryDirectory,
+        reportedStore: String? = nil
+    ) -> Self {
+        Self(
+            source: source,
+            timeout: max(5, timeout),
+            busyTimeoutMilliseconds: max(500, busyTimeoutMilliseconds),
+            temporaryRoot: temporaryRoot,
+            reportedStore: reportedStore
+        )
+    }
+
     public func query<T: Decodable>(_ sql: String) throws -> [T] {
         try withSnapshot { snapshot, directory in
             try querySnapshot(snapshot, workspace: directory, sql: sql)

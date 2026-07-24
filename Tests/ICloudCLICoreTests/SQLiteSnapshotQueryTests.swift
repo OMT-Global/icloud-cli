@@ -4,6 +4,25 @@ import Testing
 
 private struct SnapshotValueRow: Decodable, Equatable { let value: String }
 
+@Test func productionSnapshotEngineEnforcesTimeoutFloors() {
+    let source = URL(fileURLWithPath: "/private/source.db")
+    let constrained = SQLiteSnapshotQueryEngine.production(
+        source: source,
+        timeout: 0.001,
+        busyTimeoutMilliseconds: 0
+    )
+    let relaxed = SQLiteSnapshotQueryEngine.production(
+        source: source,
+        timeout: 7,
+        busyTimeoutMilliseconds: 800
+    )
+
+    #expect(constrained.timeout == 5)
+    #expect(constrained.busyTimeoutMilliseconds == 500)
+    #expect(relaxed.timeout == 7)
+    #expect(relaxed.busyTimeoutMilliseconds == 800)
+}
+
 @Test func snapshotQueryReadsDatabaseWithoutCompanionFilesAndCleansUp() throws {
     let root = try temporarySQLiteSnapshotDirectory(named: "no-companions")
     defer { try? FileManager.default.removeItem(at: root) }
