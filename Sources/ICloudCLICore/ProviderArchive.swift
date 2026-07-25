@@ -212,8 +212,8 @@ enum ArchivePrivacy {
     private static let sensitiveFieldRoots = ["body", "content", "media", "pixel", "audio", "attachment"]
 
     static func isSensitiveField(_ key: String) -> Bool {
-        let normalized = key.lowercased().filter { -e.isLetter || -e.isNumber }
-        return sensitiveFieldRoots.contains { normalized.contains(-e) }
+        let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
+        return sensitiveFieldRoots.contains { normalized.contains($0) }
     }
 }
 
