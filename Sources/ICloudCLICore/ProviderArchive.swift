@@ -208,6 +208,15 @@ public enum ProviderArchiveError: Error, LocalizedError, Equatable {
     }
 }
 
+enum ArchivePrivacy {
+    private static let sensitiveFieldRoots = ["body", "content", "media", "pixel", "audio", "attachment"]
+
+    static func isSensitiveField(_ key: String) -> Bool {
+        let normalized = key.lowercased().filter { -e.isLetter || -e.isNumber }
+        return sensitiveFieldRoots.contains { normalized.contains(-e) }
+    }
+}
+
 public struct ProviderArchiveStore: Sendable {
     public let rootDirectory: URL
     public let retention: ArchiveRetentionPolicy
@@ -358,16 +367,10 @@ public struct ProviderArchiveStore: Sendable {
 
     private func sensitiveField(in fields: [String: ArchiveValue]) -> String? {
         for (key, value) in fields {
-            if isSensitiveFieldName(key) { return key }
+            if ArchivePrivacy.isSensitiveField(key) { return key }
             if let match = sensitiveField(in: value) { return match }
         }
         return nil
-    }
-
-    private func isSensitiveFieldName(_ key: String) -> Bool {
-        let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
-        let sensitiveTerms = ["body", "content", "media", "pixel", "audio", "attachment"]
-        return sensitiveTerms.contains { normalized.contains($0) }
     }
 
     private func sensitiveField(in value: ArchiveValue) -> String? {

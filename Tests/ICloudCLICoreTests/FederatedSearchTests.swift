@@ -37,6 +37,27 @@ import Testing
     #expect(visible.hits.first?.providerId == "messages")
 }
 
+@Test func federatedSearchExcludesLegacySensitiveFieldAliasesUntilBodyOptIn() throws {
+    let root = try federatedSearchFixture("legacy-sensitive-aliases")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = ProviderArchiveStore(rootDirectory: root)
+    let aliases: [String: ArchiveValue] = [
+        "bodyText": .string("top-secret-alias"),
+        "metadata": .object(["htmlBody": .string("nested-secret-alias")]),
+        "attachmentData": .string("attachment-secret-alias")
+    ]
+    let batch = ArchiveSyncBatch(schemaVersion: "icloud-cli.archive-sync.v1", providerId: "messages", providerSchemaVersion: "messages.v1", sourceFingerprint: "legacy-fixture", cursor: "done", records: [ArchiveInputRecord(id: "legacy-message", sourceModifiedAt: "2026-07-20T00:00:00Z", fields: aliases)], deletedIds: [], failure: nil, sensitiveFields: ["bodyText", "htmlBody", "attachmentData"])
+    _ = try store.sync(batch, budget: .defaultPolling)
+    let engine = FederatedArchiveSearch(archiveDirectory: root)
+
+    let hidden = try engine.search(FederatedSearchRequest(query: "nested-secret-alias", providers: ["messages"], since: nil, until: nil, limit: 10, cursor: nil, includeSensitive: true, includeBodies: false, confirmSensitive: false))
+    #expect(hidden.hits.isEmpty)
+    #expect(hidden.totalMatched == 0)
+
+    let visible = try engine.search(FederatedSearchRequest(query: "nested-secret-alias", providers: ["messages"], since: nil, until: nil, limit: 10, cursor: nil, includeSensitive: true, includeBodies: true, confirmSensitive: true))
+    #expect(visible.hits.map(\.recordId) == ["legacy-message"])
+}
+
 @Test func parsesFederatedSearchFiltersAndPagination() throws {
     let command = try CLIParser().parse(arguments: ["icloud-cli", "search", "plan", "--provider", "drive", "--since", "2026-01-01T00:00:00Z", "--cursor", "offset:2", "--limit", "5"])
     guard case .federatedSearch(let options) = command else { Issue.record("Expected federated search"); return }

@@ -98,20 +98,20 @@ public struct FederatedArchiveSearch: Sendable {
 
     private func searchableStrings(_ fields: [String: ArchiveValue], includeBodies: Bool) -> [String] {
         fields.sorted(by: { $0.key < $1.key }).flatMap { key, value -> [String] in
-            if ["body", "content", "attachment", "attachments"].contains(key.lowercased()) && !includeBodies { return [] }
-            return strings(value)
+            strings(value, key: key, includeBodies: includeBodies)
         }
     }
 
-    private func strings(_ value: ArchiveValue) -> [String] {
+    private func strings(_ value: ArchiveValue, key: String? = nil, includeBodies: Bool) -> [String] {
+        if let key, ArchivePrivacy.isSensitiveField(key), !includeBodies { return [] }
         switch value {
         case .string(let value): [value]
         case .int(let value): [String(value)]
         case .double(let value): [String(value)]
         case .bool(let value): [String(value)]
         case .null: []
-        case .array(let values): values.flatMap(strings)
-        case .object(let values): values.sorted(by: { $0.key < $1.key }).flatMap { strings($0.value) }
+        case .array(let values): values.flatMap { strings($0, includeBodies: includeBodies) }
+        case .object(let values): values.sorted(by: { $0.key < $1.key }).flatMap { strings($0.value, key: $0.key, includeBodies: includeBodies) }
         }
     }
 }
