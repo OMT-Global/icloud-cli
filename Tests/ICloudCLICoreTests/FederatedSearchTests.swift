@@ -40,14 +40,14 @@ import Testing
 @Test func federatedSearchExcludesLegacySensitiveFieldAliasesUntilBodyOptIn() throws {
     let root = try federatedSearchFixture("legacy-sensitive-aliases")
     defer { try? FileManager.default.removeItem(at: root) }
-    let store = ProviderArchiveStore(rootDirectory: root)
     let aliases: [String: ArchiveValue] = [
         "bodyText": .string("top-secret-alias"),
         "metadata": .object(["htmlBody": .string("nested-secret-alias")]),
         "attachmentData": .string("attachment-secret-alias")
     ]
-    let batch = ArchiveSyncBatch(schemaVersion: "icloud-cli.archive-sync.v1", providerId: "messages", providerSchemaVersion: "messages.v1", sourceFingerprint: "legacy-fixture", cursor: "done", records: [ArchiveInputRecord(id: "legacy-message", sourceModifiedAt: "2026-07-20T00:00:00Z", fields: aliases)], deletedIds: [], failure: nil, sensitiveFields: ["bodyText", "htmlBody", "attachmentData"])
-    _ = try store.sync(batch, budget: .defaultPolling)
+    let archivedAt = "2026-07-20T00:00:00Z"
+    let legacyDocument = ProviderArchiveDocument(schemaVersion: "icloud-cli.archive.v1", providerId: "messages", providerSchemaVersion: "messages.v1", cursor: "done", sourceFingerprint: "legacy-fixture", lastAttemptAt: archivedAt, lastSuccessAt: archivedAt, freshness: .fresh, activeItemCount: 1, tombstoneCount: 0, totalRecordCount: 1, failure: nil, records: [ArchivedRecord(id: "legacy-message", sourceModifiedAt: archivedAt, archivedAt: archivedAt, tombstonedAt: nil, fields: aliases)])
+    try JSONEncoder().encode(legacyDocument).write(to: root.appendingPathComponent("messages.json"))
     let engine = FederatedArchiveSearch(archiveDirectory: root)
 
     let hidden = try engine.search(FederatedSearchRequest(query: "nested-secret-alias", providers: ["messages"], since: nil, until: nil, limit: 10, cursor: nil, includeSensitive: true, includeBodies: false, confirmSensitive: false))
