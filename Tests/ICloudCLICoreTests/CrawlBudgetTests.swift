@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import ICloudCLICore
@@ -19,20 +20,60 @@ import Testing
     #expect(report.nextAction?.contains("--scan-limit") == true)
 }
 
-@Test func driveCrawlReportsDeterministicTimeout() throws {
-    let root = try crawlFixture(named: "drive-timeout", fileCount: 4)
+@Test func driveCrawlAtExactScanBudgetIsComplete() throws {
+    let root = try crawlFixture(named: "drive-exact-scan", fileCount: 3)
     defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
-    let clock = StepClock(values: [0, 0, 0.010, 0.010])
 
-    let report = try ICloudDriveInventoryReader(rootDirectory: root, now: { clock.next() }).listFilesReport(
+    let report = try ICloudDriveInventoryReader(rootDirectory: root).listFilesReport(
         depth: Int.max,
-        budget: CrawlBudget(scanLimit: 100, wallClockLimitMilliseconds: 5)
+        budget: CrawlBudget(scanLimit: 3, wallClockLimitMilliseconds: 5_000)
     )
 
+    #expect(report.state == .complete)
+    #expect(report.scannedCount == 3)
+    #expect(report.resultCount == 3)
+    #expect(report.totalAvailable == 3)
+    #expect(report.nextAction == nil)
+}
+
+@Test func driveCrawlTimeoutTerminatesBlockedWorker() throws {
+    let root = try crawlFixture(named: "drive-worker-timeout", fileCount: 1)
+    defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+    let worker = ProcessIdentifierBox()
+
+    let started = DispatchTime.now().uptimeNanoseconds
+    let report = try ICloudDriveInventoryReader(
+        rootDirectory: root,
+        workerExecutable: URL(fileURLWithPath: "/bin/sleep"),
+        workerArguments: ["30"],
+        workerStarted: { worker.record($0) }
+    ).listFilesReport(
+        depth: Int.max,
+        budget: CrawlBudget(scanLimit: 100, wallClockLimitMilliseconds: 100)
+    )
+    let elapsedMilliseconds = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+
     #expect(report.state == .timeout)
-    #expect(report.scannedCount < 4)
-    #expect(report.totalAvailable == nil)
     #expect(report.nextAction?.contains("--timeout-ms") == true)
+    #expect(elapsedMilliseconds < 2_000)
+    let pid = try #require(worker.value)
+    #expect(kill(pid, 0) == -1)
+    #expect(errno == ESRCH)
+}
+
+private final class ProcessIdentifierBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var processIdentifier: Int32?
+
+    var value: Int32? {
+        lock.lock(); defer { lock.unlock() }
+        return processIdentifier
+    }
+
+    func record(_ processIdentifier: Int32) {
+        lock.lock(); defer { lock.unlock() }
+        self.processIdentifier = processIdentifier
+    }
 }
 
 @Test func finderTagsPreserveScanAndResultLimits() throws {
@@ -102,17 +143,6 @@ import Testing
     let watch = try CLIParser().parse(arguments: ["icloud-cli", "watch", "--once", "--scan-limit", "40", "--timeout-ms", "700"])
     guard case .watch(let watchOptions) = watch else { Issue.record("Expected watch"); return }
     #expect(watchOptions.budget == CrawlBudget(scanLimit: 40, wallClockLimitMilliseconds: 700))
-}
-
-private final class StepClock: @unchecked Sendable {
-    private var values: [TimeInterval]
-    private let lock = NSLock()
-    init(values: [TimeInterval]) { self.values = values }
-    func next() -> TimeInterval {
-        lock.lock(); defer { lock.unlock() }
-        if values.count > 1 { return values.removeFirst() }
-        return values.first ?? 0
-    }
 }
 
 private func crawlFixture(named name: String, fileCount: Int, taggedIndexes: Set<Int> = []) throws -> URL {
