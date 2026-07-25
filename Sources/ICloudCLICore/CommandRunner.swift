@@ -74,6 +74,10 @@ public struct CommandRunner: Sendable {
                 let status = try FocusStatusReader(focusDirectory: options.focusDirectory).readStatus()
                 output(try render(status, format: options.format))
                 return 0
+            case .federatedSearch(let options):
+                let request = FederatedSearchRequest(query: options.query, providers: options.providers, since: options.since, until: options.until, limit: options.limit, cursor: options.cursor, includeSensitive: options.includeSensitive, includeBodies: options.includeBodies, confirmSensitive: options.confirmSensitive)
+                output(try render(FederatedArchiveSearch(archiveDirectory: options.archiveDirectory).search(request), format: options.format))
+                return 0
             case .handoffList(let options):
                 let activities = try HandoffActivityReader(handoffDirectory: options.handoffDirectory).listActivities(limit: options.limit)
                 output(try render(activities, format: options.format))
