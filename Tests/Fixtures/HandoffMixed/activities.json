@@ -1,0 +1,12 @@
+{
+  "activities": [
+    {
+      "deviceName": "Example Mac",
+      "appBundleId": "com.apple.Safari",
+      "appName": "Safari",
+      "activityType": "NSUserActivityTypeBrowsingWeb",
+      "title": "Synthetic Activity",
+      "updatedAt": "2026-07-11T10:00:00Z"
+    }
+  ]
+}

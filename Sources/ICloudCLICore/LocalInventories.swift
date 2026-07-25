@@ -158,6 +158,16 @@ public struct ReminderEntry: Codable, Equatable, Sendable {
         case title, listName, dueAt, isCompleted, priority, notes, createdAt
     }
 
+    public init(title: String, listName: String, dueAt: String?, isCompleted: Bool, priority: Int, notes: String?, createdAt: String?) {
+        self.title = title
+        self.listName = listName
+        self.dueAt = dueAt
+        self.isCompleted = isCompleted
+        self.priority = priority
+        self.notes = notes
+        self.createdAt = createdAt
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         title = try container.decode(String.self, forKey: .title)
@@ -173,6 +183,11 @@ public struct ReminderEntry: Codable, Equatable, Sendable {
 public struct ReminderListSummary: Codable, Equatable, Sendable {
     public let name: String
     public let itemCount: Int
+
+    public init(name: String, itemCount: Int) {
+        self.name = name
+        self.itemCount = itemCount
+    }
 }
 
 public struct SafariHistoryEntry: Codable, Equatable, Sendable {
@@ -326,16 +341,16 @@ public struct LocalSQLiteInventoryReader: Sendable {
             """)
     }
 
-    public func reminderLists() throws -> [ReminderListSummary] {
+    public func reminderLists(limit: Int = 200) throws -> [ReminderListSummary] {
         if try tableExists("ZREMCDREMINDER"), try tableExists("ZREMCDBASELIST") {
-            return try appleReminderLists()
+            return try appleReminderLists(limit: limit)
         }
-        return try query("SELECT listName AS name, COUNT(*) AS itemCount FROM reminders GROUP BY listName ORDER BY listName ASC;")
+        return try query("SELECT listName AS name, COUNT(*) AS itemCount FROM reminders GROUP BY listName ORDER BY listName ASC LIMIT \(bounded(limit, defaultValue: 200, max: 1000));")
     }
 
-    public func reminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool) throws -> [ReminderEntry] {
+    public func reminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool, limit: Int = 200) throws -> [ReminderEntry] {
         if try tableExists("ZREMCDREMINDER"), try tableExists("ZREMCDBASELIST") {
-            return try appleReminders(list: list, dueBefore: dueBefore, dueAfter: dueAfter, includeCompleted: includeCompleted)
+            return try appleReminders(list: list, dueBefore: dueBefore, dueAfter: dueAfter, includeCompleted: includeCompleted, limit: limit)
         }
         var filters: [String?] = [
             list.map { "listName = '\(sqlEscape($0))'" },
@@ -344,10 +359,10 @@ public struct LocalSQLiteInventoryReader: Sendable {
         ]
         if !includeCompleted { filters.append("isCompleted = 0") }
         let whereClause = andClause(filters)
-        return try query("SELECT title, listName, dueAt, isCompleted, priority, notes, createdAt FROM reminders\(whereClause) ORDER BY dueAt ASC, createdAt ASC;")
+        return try query("SELECT title, listName, dueAt, isCompleted, priority, notes, createdAt FROM reminders\(whereClause) ORDER BY dueAt ASC, createdAt ASC LIMIT \(bounded(limit, defaultValue: 200, max: 1000));")
     }
 
-    private func appleReminderLists() throws -> [ReminderListSummary] {
+    private func appleReminderLists(limit: Int) throws -> [ReminderListSummary] {
         try query("""
             SELECT
                 COALESCE(NULLIF(l.ZNAME, ''), 'List ' || l.Z_PK) AS name,
@@ -357,11 +372,12 @@ public struct LocalSQLiteInventoryReader: Sendable {
                 AND COALESCE(r.ZMARKEDFORDELETION, 0) = 0
             WHERE COALESCE(l.ZMARKEDFORDELETION, 0) = 0
             GROUP BY l.Z_PK
-            ORDER BY name ASC;
+            ORDER BY name ASC
+            LIMIT \(bounded(limit, defaultValue: 200, max: 1000));
             """)
     }
 
-    private func appleReminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool) throws -> [ReminderEntry] {
+    private func appleReminders(list: String?, dueBefore: String?, dueAfter: String?, includeCompleted: Bool, limit: Int) throws -> [ReminderEntry] {
         let dueExpression = appleDateExpression("r.ZDUEDATE")
         let createdExpression = appleDateExpression("r.ZCREATIONDATE")
         var filters: [String?] = [
@@ -386,7 +402,8 @@ public struct LocalSQLiteInventoryReader: Sendable {
             FROM ZREMCDREMINDER r
             LEFT JOIN ZREMCDBASELIST l ON l.Z_PK = r.ZLIST
             \(whereClause)
-            ORDER BY dueAt ASC, createdAt ASC;
+            ORDER BY dueAt ASC, createdAt ASC
+            LIMIT \(bounded(limit, defaultValue: 200, max: 1000));
             """)
     }
 

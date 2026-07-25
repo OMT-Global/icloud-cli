@@ -52,9 +52,10 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | `icloud-cli photos screenshots` | Screenshot file metadata under `~/Pictures/Screenshots` by default | Normal user file access. The command does not read pixel data or thumbnails. Logs should redact home-directory paths. |
 | `icloud-cli photos list` | Local Photos library file metadata under `~/Pictures/Photos Library.photoslibrary` by default | Full Disk Access may be needed. The command emits file metadata only and does not export pixels, thumbnails, or EXIF location data. |
 | `icloud-cli notes list` | Local Notes SQLite metadata from `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite` by default | Full Disk Access may be needed. Body content is omitted unless `--include-body` is passed. Logs should redact titles and always omit bodies. |
-| `icloud-cli reminders list` / `reminders lists` | Local Reminders metadata under `~/Library/Reminders` by default | Normal user file access or Full Disk Access depending on macOS privacy posture. Reminder titles and notes are sensitive; logs should summarize list counts. |
+| `icloud-cli reminders list` / `reminders lists` | EventKit reminder and list metadata by default | Reminders authorization is required. `reminders authorization` checks state without prompting. The explicit `--degraded-private-store` fallback reads a version-checked private store and may require Full Disk Access. Reminder titles and notes are sensitive; logs should summarize list counts. |
 | `icloud-cli safari history` | `~/Library/Safari/History.db` | Full Disk Access is expected. Requires `--confirm-sensitive`; `--redact-urls` is recommended for automated export. This command is not part of default watch polling. |
 | `icloud-cli messages conversations` / `messages recent` | `~/Library/Messages/chat.db` | Full Disk Access is expected. Recent message reads require `--confirm-sensitive`; bodies require `--include-body`. Message commands are not part of default watch polling. |
+| `icloud-cli messages archive` / `messages search` | A consistent private snapshot of `chat.db`, then `~/.icloud-cli/archives/messages.json` | Archive creation requires `--confirm-sensitive`. Bodies require both `--include-body` and an explicit bounded retention period; body search additionally requires `--confirm-sensitive`. The archive remains local with mode `0600`. |
 | `icloud-cli contacts list` | Local AddressBook SQLite metadata under `~/Library/Application Support/AddressBook` by default | Contacts permission or Full Disk Access may be needed. Notes are omitted unless `--include-notes` is passed. |
 | `icloud-cli maps favorites` / `maps recents` | Local Maps cache under `~/Library/Containers/com.apple.Maps` by default | Location data is sensitive. Home/work categories are high-sensitivity and logs must omit coordinates. |
 | `icloud-cli news history` / `news topics` | Local News cache under `~/Library/Containers/com.apple.news` by default | Reading history is interest-graph data. Logs should summarize source/topic counts rather than URLs. |
@@ -62,6 +63,8 @@ OpenClaw integrations should default to local retention. Exporting raw browsing 
 | Future iCloud settings commands | Local Apple account or system settings state | Document per-command read surfaces before implementation; do not require Automation unless a command actually controls an app. |
 
 Automation permission is not required for the current Safari tab reader because it reads local files. Any future command that controls Safari, System Settings, or another app must document the Automation prompt and failure mode before merge.
+
+Reminders commands are read-only. EventKit is the primary source for `list` and `lists`; private smart views and the explicit degraded fallback can break when Apple changes its schema and therefore fail closed on unsupported shapes. Any future mutation must live under a separate `actions reminders` namespace and follow [ADR 001](adr/001-eventkit-reminders-action-boundary.md).
 
 ## Fixtures And Tests
 

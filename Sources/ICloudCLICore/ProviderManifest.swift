@@ -48,12 +48,12 @@ public enum ProviderRegistry {
         provider("home", "Home", .beta, .sqlite, .high, ["home accessories", "home homes", "home rooms", "home scenes"], ["accessories", "homes", "rooms", "scenes"]),
         provider("mail", "Mail", .beta, .sqlite, .high, ["mail accounts", "mail mailboxes", "mail recent"], ["accounts", "headers", "mailboxes"]),
         provider("maps", "Maps", .beta, .sqlite, .high, ["maps favorites", "maps recents"], ["favorites", "recents", "location"]),
-        provider("messages", "Messages", .beta, .sqlite, .high, ["messages conversations", "messages recent"], ["consistent-snapshot", "conversations", "messages", "date-filtering"]),
+        provider("messages", "Messages", .beta, .sqlite, .high, ["messages archive", "messages conversations", "messages recent", "messages search"], ["archive-metadata", "consistent-snapshot", "conversations", "date-filtering", "incremental", "messages", "search"]),
         provider("music", "Music", .beta, .sqlite, .moderate, ["music playlists", "music status", "music tracks"], ["inventory", "playlists", "status"]),
         provider("news", "News", .beta, .sqlite, .moderate, ["news history", "news topics"], ["history", "topics", "date-filtering"]),
         provider("notes", "Notes", .beta, .sqlite, .high, ["notes accounts", "notes folders", "notes list", "notes shared", "notes tags"], ["accounts", "folders", "inventory", "sharing", "tags"]),
         provider("photos", "Photos", .beta, .mixed, .high, ["photos list", "photos screenshots", "photos shared-albums", "photos shared-library"], ["assets", "screenshots", "sharing"]),
-        provider("reminders", "Reminders", .beta, .sqlite, .high, ["reminders assigned", "reminders flagged", "reminders list", "reminders lists", "reminders scheduled", "reminders today"], ["inventory", "lists", "smart-views"]),
+        provider("reminders", "Reminders", .beta, .mixed, .high, ["reminders assigned", "reminders authorization", "reminders flagged", "reminders list", "reminders lists", "reminders scheduled", "reminders today"], ["degraded-private-store", "eventkit-primary", "inventory", "lists", "smart-views"], permissionExpectations: ["eventkit-reminders-read", "full-disk-access-only-for-explicit-degraded-fallback"]),
         provider("safari", "Safari", .beta, .mixed, .high, ["safari bookmarks", "safari cloud-tabs list", "safari cloud-tabs probe", "safari extensions list", "safari frequently-visited", "safari history", "safari profiles list", "safari reading-list", "safari tabs"], ["bookmarks", "cloud-tabs", "consistent-snapshot", "extensions", "history", "profiles", "tabs"]),
         provider("shortcuts", "Shortcuts", .stable, .filesystem, .moderate, ["shortcuts list"], ["archive-metadata", "inventory", "search"], true),
         provider("stocks", "Stocks", .beta, .sqlite, .moderate, ["stocks groups", "stocks watchlist"], ["groups", "watchlist"]),
@@ -72,7 +72,8 @@ public enum ProviderRegistry {
         _ sensitivity: ProviderSensitivity,
         _ commands: [String],
         _ capabilities: [String],
-        _ defaultPolling: Bool = false
+        _ defaultPolling: Bool = false,
+        permissionExpectations: [String]? = nil
     ) -> ProviderDescriptor {
         ProviderDescriptor(
             id: id,
@@ -81,7 +82,7 @@ public enum ProviderRegistry {
             sourceKind: sourceKind,
             accessMode: .readOnly,
             sensitivity: sensitivity,
-            permissionExpectations: permissions(for: sourceKind),
+            permissionExpectations: (permissionExpectations ?? permissions(for: sourceKind)).sorted(),
             commands: commands.sorted(),
             capabilities: capabilities.sorted(),
             defaultPolling: defaultPolling

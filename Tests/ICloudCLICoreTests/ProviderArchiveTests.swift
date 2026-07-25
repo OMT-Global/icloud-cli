@@ -110,9 +110,9 @@ import Testing
     let root = try archiveTestDirectory(named: "sensitive")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = ProviderArchiveStore(rootDirectory: root)
-    let batch = ArchiveSyncBatch(schemaVersion: "icloud-cli.archive-sync.v1", providerId: "messages", providerSchemaVersion: "messages.v1", sourceFingerprint: "source", cursor: nil, records: [], deletedIds: [], failure: nil)
+    let batch = ArchiveSyncBatch(schemaVersion: "icloud-cli.archive-sync.v1", providerId: "contacts", providerSchemaVersion: "contacts.v1", sourceFingerprint: "source", cursor: nil, records: [], deletedIds: [], failure: nil)
 
-    #expect(throws: ProviderArchiveError.providerNotArchivable("messages")) {
+    #expect(throws: ProviderArchiveError.providerNotArchivable("contacts")) {
         try store.sync(batch, budget: .defaultPolling)
     }
 }
@@ -132,23 +132,18 @@ import Testing
 @Test func archiveRejectsSensitiveFieldNestedInsideArrays() throws {
     let root = try archiveTestDirectory(named: "nested-array-sensitive")
     defer { try? FileManager.default.removeItem(at: root) }
-    let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: [
-        "nested": .array([.array([.object(["body": .string("private")])])]),
-    ])
+    let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: ["nested": .array([.array([.object(["body": .string("private")])])])])
 
     #expect(throws: ProviderArchiveError.sensitiveField("body")) {
         try ProviderArchiveStore(rootDirectory: root).sync(archiveBatch(records: [record]), budget: .defaultPolling)
     }
 }
-@Test func archiveRejectsSensitiveFieldAliases() throws {
-    let aliases = ["bodyText", "htmlBody", "mediaURL"]
 
-    for alias in aliases {
+@Test func archiveRejectsSensitiveFieldAliases() throws {
+    for alias in ["bodyText", "htmlBody", "mediaURL"] {
         let root = try archiveTestDirectory(named: "sensitive-alias-\(alias)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: [
-            alias: .string("private"),
-        ])
+        let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: [alias: .string("private")])
 
         #expect(throws: ProviderArchiveError.sensitiveField(alias)) {
             try ProviderArchiveStore(rootDirectory: root).sync(archiveBatch(records: [record]), budget: .defaultPolling)

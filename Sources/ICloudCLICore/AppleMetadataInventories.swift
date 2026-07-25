@@ -1021,10 +1021,14 @@ public struct PermissionProbe: Codable, Equatable, Sendable {
 }
 
 public struct PermissionsDoctor: Sendable {
-    public init() {}
+    public let remindersAuthorization: RemindersAuthorizationState
+
+    public init(remindersAuthorization: RemindersAuthorizationState = SystemReminderEventKitClient.authorizationState()) {
+        self.remindersAuthorization = remindersAuthorization
+    }
 
     public func diagnose() -> [PermissionProbe] {
-        probeMatrix().map { item in
+        let pathProbes = probeMatrix().map { item in
             let redacted = item.paths.map(redactHomePath)
             let missing = item.paths.filter { !FileManager.default.fileExists(atPath: $0) }
             let unreadable = item.paths.filter { FileManager.default.fileExists(atPath: $0) && !FileManager.default.isReadableFile(atPath: $0) }
@@ -1040,6 +1044,18 @@ public struct PermissionsDoctor: Sendable {
             }
             return PermissionProbe(command: item.command, paths: redacted, status: status, hint: hint(for: status))
         }
+        return pathProbes + [remindersProbe()]
+    }
+
+    private func remindersProbe() -> PermissionProbe {
+        let status = "eventkit-\(remindersAuthorization.rawValue)"
+        let hint: String
+        switch remindersAuthorization {
+        case .fullAccess: hint = "Reminders read access is granted through EventKit."
+        case .notDetermined: hint = "Grant Reminders access in System Settings > Privacy & Security > Reminders before reading reminders."
+        case .denied, .restricted, .writeOnly, .unknown: hint = "Enable Reminders read access in System Settings > Privacy & Security > Reminders."
+        }
+        return PermissionProbe(command: "reminders list", paths: [], status: status, hint: hint)
     }
 
     private func probeMatrix() -> [(command: String, paths: [String], needsConfirmation: Bool)] {
