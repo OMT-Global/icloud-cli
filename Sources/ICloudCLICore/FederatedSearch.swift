@@ -104,7 +104,7 @@ public struct FederatedArchiveSearch: Sendable {
 
     private func strings(_ value: ArchiveValue, key: String? = nil, includeBodies: Bool) -> [String] {
         if let key, ArchivePrivacy.isSensitiveField(key), !includeBodies { return [] }
-        switch value {
+        return switch value {
         case .string(let value): [value]
         case .int(let value): [String(value)]
         case .double(let value): [String(value)]
