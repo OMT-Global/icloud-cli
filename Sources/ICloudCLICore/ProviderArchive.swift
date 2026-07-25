@@ -343,7 +343,11 @@ public struct ProviderArchiveStore: Sendable {
         }
         let approvedSensitive = Set(batch.sensitiveFields ?? [])
         for record in batch.records {
-            if let field = sensitiveField(in: record.fields), !(batch.providerId == "messages" && approvedSensitive.contains(field)) { throw ProviderArchiveError.sensitiveField(field) }
+            // This internal opt-in is limited to the canonical Messages body field.
+            // Aliases must remain fail-closed.
+            if let field = sensitiveField(in: record.fields), !(batch.providerId == "messages" && field == "body" && approvedSensitive.contains("body")) {
+                throw ProviderArchiveError.sensitiveField(field)
+            }
         }
     }
 
@@ -353,19 +357,29 @@ public struct ProviderArchiveStore: Sendable {
     }
 
     private func sensitiveField(in fields: [String: ArchiveValue]) -> String? {
-        let forbidden = Set(["body", "content", "mediadata", "pixeldata", "audiodata", "attachment", "attachments"])
         for (key, value) in fields {
-            if forbidden.contains(key.lowercased()) { return key }
-            switch value {
-            case .object(let nested): if let match = sensitiveField(in: nested) { return match }
-            case .array(let values):
-                for case .object(let nested) in values {
-                    if let match = sensitiveField(in: nested) { return match }
-                }
-            default: break
-            }
+            if isSensitiveFieldName(key) { return key }
+            if let match = sensitiveField(in: value) { return match }
         }
         return nil
+    }
+
+    private func isSensitiveFieldName(_ key: String) -> Bool {
+        let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
+        let sensitiveTerms = ["body", "content", "media", "pixel", "audio", "attachment"]
+        return sensitiveTerms.contains { normalized.contains($0) }
+    }
+
+    private func sensitiveField(in value: ArchiveValue) -> String? {
+        switch value {
+        case .object(let fields): return sensitiveField(in: fields)
+        case .array(let values):
+            for value in values {
+                if let match = sensitiveField(in: value) { return match }
+            }
+            return nil
+        default: return nil
+        }
     }
 
     private func redactedFailure(_ failure: ArchiveFailure) -> ArchiveFailure {

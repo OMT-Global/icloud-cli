@@ -129,6 +129,28 @@ import Testing
     }
 }
 
+@Test func archiveRejectsSensitiveFieldNestedInsideArrays() throws {
+    let root = try archiveTestDirectory(named: "nested-array-sensitive")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: ["nested": .array([.array([.object(["body": .string("private")])])])])
+
+    #expect(throws: ProviderArchiveError.sensitiveField("body")) {
+        try ProviderArchiveStore(rootDirectory: root).sync(archiveBatch(records: [record]), budget: .defaultPolling)
+    }
+}
+
+@Test func archiveRejectsSensitiveFieldAliases() throws {
+    for alias in ["bodyText", "htmlBody", "mediaURL"] {
+        let root = try archiveTestDirectory(named: "sensitive-alias-\(alias)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let record = ArchiveInputRecord(id: "one", sourceModifiedAt: nil, fields: [alias: .string("private")])
+
+        #expect(throws: ProviderArchiveError.sensitiveField(alias)) {
+            try ProviderArchiveStore(rootDirectory: root).sync(archiveBatch(records: [record]), budget: .defaultPolling)
+        }
+    }
+}
+
 @Test func archiveSyncReturnsPartialAtExplicitScanBudget() throws {
     let root = try archiveTestDirectory(named: "bounded")
     defer { try? FileManager.default.removeItem(at: root) }
