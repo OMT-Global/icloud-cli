@@ -1022,9 +1022,14 @@ public struct PermissionProbe: Codable, Equatable, Sendable {
 
 public struct PermissionsDoctor: Sendable {
     public let remindersAuthorization: RemindersAuthorizationState
+    public let photoAuthorization: PhotoKitAuthorizationState
 
-    public init(remindersAuthorization: RemindersAuthorizationState = SystemReminderEventKitClient.authorizationState()) {
+    public init(
+        remindersAuthorization: RemindersAuthorizationState = SystemReminderEventKitClient.authorizationState(),
+        photoAuthorization: PhotoKitAuthorizationState = SystemPhotoKitClient.authorizationState()
+    ) {
         self.remindersAuthorization = remindersAuthorization
+        self.photoAuthorization = photoAuthorization
     }
 
     public func diagnose() -> [PermissionProbe] {
@@ -1044,7 +1049,7 @@ public struct PermissionsDoctor: Sendable {
             }
             return PermissionProbe(command: item.command, paths: redacted, status: status, hint: hint(for: status))
         }
-        return pathProbes + [remindersProbe()]
+        return pathProbes + [remindersProbe(), photoProbe()]
     }
 
     private func remindersProbe() -> PermissionProbe {
@@ -1068,8 +1073,12 @@ public struct PermissionsDoctor: Sendable {
             ("mail recent", [home.appendingPathComponent("Library/Mail").path], true),
             ("notes list", [home.appendingPathComponent("Library/Group Containers/group.com.apple.notes/NoteStore.sqlite").path], false),
             ("drive list", [home.appendingPathComponent("Library/Mobile Documents").path], false),
-            ("photos list", [home.appendingPathComponent("Pictures/Photos Library.photoslibrary").path], false),
         ]
+    }
+
+    private func photoProbe() -> PermissionProbe {
+        let readable = photoAuthorization == .authorized || photoAuthorization == .limited
+        return PermissionProbe(command: "photos list", paths: [], status: "photokit-\(photoAuthorization.rawValue)", hint: readable ? "Photos metadata is authorized through PhotoKit." : "Grant Photos access in System Settings > Privacy & Security > Photos.")
     }
 
     private func hint(for status: String) -> String {
