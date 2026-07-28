@@ -26,6 +26,9 @@ import Testing
     #expect(reminders?.commands.contains("reminders authorization") == true)
     #expect(reminders?.capabilities.contains("eventkit-primary") == true)
     #expect(reminders?.permissionExpectations == ["eventkit-reminders-read", "full-disk-access-only-for-explicit-degraded-fallback"])
+    let photos = manifest.providers.first { $0.id == "photos" }
+    #expect(photos?.commands.contains("photos authorization") == true)
+    #expect(photos?.capabilities.contains("photokit-primary") == true)
     #expect(manifest.providers.first { $0.id == "messages" }?.capabilities.contains("consistent-snapshot") == true)
     #expect(manifest.providers.first { $0.id == "safari" }?.capabilities.contains("consistent-snapshot") == true)
     #expect(manifest.providers.first { $0.id == "drive" }?.capabilities.contains("bounded-crawl") == true)

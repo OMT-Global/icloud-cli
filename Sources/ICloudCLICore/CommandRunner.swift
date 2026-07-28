@@ -5,15 +5,18 @@ public struct CommandRunner: Sendable {
     private let remindersClient: any ReminderEventKitClient
     private let output: @Sendable (String) -> Void
     private let errorOutput: @Sendable (String) -> Void
+    private let photoKitClient: any PhotoKitClient
 
     public init(
         parser: CLIParser = CLIParser(),
         remindersClient: any ReminderEventKitClient = SystemReminderEventKitClient(),
+        photoKitClient: any PhotoKitClient = SystemPhotoKitClient(),
         output: @escaping @Sendable (String) -> Void = { print($0) },
         errorOutput: @escaping @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
     ) {
         self.parser = parser
         self.remindersClient = remindersClient
+        self.photoKitClient = photoKitClient
         self.output = output
         self.errorOutput = errorOutput
     }
@@ -123,8 +126,18 @@ public struct CommandRunner: Sendable {
                 output(try render(notes, format: options.format))
                 return 0
             case .photosList(let options):
-                let photos = try PhotosInventoryReader(photosLibraryDirectory: options.photosLibrary).listPhotos(limit: options.limit)
+                let photos: [PhotoEvidenceAsset]
+                if options.degradedFilesystem {
+                    photos = try PhotosInventoryReader(photosLibraryDirectory: options.photosLibrary).listPhotos(limit: options.limit).map {
+                        PhotoEvidenceAsset(id: $0.localIdentifier, facts: .init(filename: $0.filename, mediaType: $0.mediaType, createdAt: $0.createdAt, modifiedAt: $0.modifiedAt, pixelWidth: 0, pixelHeight: 0, isFavorite: $0.isFavorite, isHidden: false, albumNames: $0.albumNames, availability: .unknown), observations: [], provenance: .init(source: "photos-library-filesystem", degraded: true))
+                    }
+                } else {
+                    photos = try PhotoKitProvider(client: photoKitClient).assets(limit: options.limit)
+                }
                 output(try render(photos, format: options.format))
+                return 0
+            case .photosAuthorization(let format):
+                output(try render(PhotoKitProvider(client: photoKitClient).authorization(), format: format))
                 return 0
             case .photosScreenshots(let options):
                 let screenshots = try PhotosInventoryReader(screenshotsDirectory: options.screenshotsDirectory).listScreenshots()

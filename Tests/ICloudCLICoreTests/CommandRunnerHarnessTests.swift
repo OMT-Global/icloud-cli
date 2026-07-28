@@ -25,7 +25,7 @@ import Testing
         ["icloud-cli", "drive", "containers", "--icloud-root", fixtureRoot.appendingPathComponent("MobileDocuments").path],
         ["icloud-cli", "shortcuts", "list", "--shortcuts-dir", fixtureRoot.appendingPathComponent("Shortcuts").path],
         ["icloud-cli", "photos", "screenshots", "--screenshots-dir", media.screenshots.path],
-        ["icloud-cli", "photos", "list", "--photos-library", media.photosLibrary.path],
+        ["icloud-cli", "photos", "list", "--degraded-filesystem", "--photos-library", media.photosLibrary.path],
         ["icloud-cli", "notes", "list", "--notes-store", database.path],
         ["icloud-cli", "reminders", "lists", "--degraded-private-store", "--reminders-store", database.path],
         ["icloud-cli", "reminders", "list", "--degraded-private-store", "--reminders-store", database.path],

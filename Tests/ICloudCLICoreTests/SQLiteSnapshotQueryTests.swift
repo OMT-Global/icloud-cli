@@ -70,6 +70,21 @@ private struct SnapshotValueRow: Decodable, Equatable { let value: String }
     }
 }
 
+@Test func snapshotQueryCreatesSingleFileSnapshotForLiveWALStore() throws {
+    let root = try temporarySQLiteSnapshotDirectory(named: "coherent-wal")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let database = root.appendingPathComponent("source.db")
+    let writer = try openWALFixture(database: database)
+    defer { writer.stop() }
+    let engine = SQLiteSnapshotQueryEngine(source: database)
+
+    try engine.withSnapshot { snapshot, workspace in
+        #expect(!FileManager.default.fileExists(atPath: snapshot.path + "-wal"))
+        let rows: [SnapshotValueRow] = try engine.querySnapshot(snapshot, workspace: workspace, sql: "SELECT value FROM values_table;")
+        #expect(rows == [SnapshotValueRow(value: "wal-row")])
+    }
+}
+
 @Test func snapshotQueryMapsSchemaDriftAndBusyFailures() {
     let schema = sqliteError(from: Data("Error: no such table: missing".utf8), store: "/private/source.db")
     #expect(schema == .unsupportedSchema(store: "/private/source.db", detail: "Error: no such table: missing"))

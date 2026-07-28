@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "icloud-cli", targets: ["icloud-cli"]),
     ],
     targets: [
-        .target(name: "ICloudCLICore", linkerSettings: [.linkedFramework("EventKit")]),
+        .target(name: "ICloudCLICore", linkerSettings: [.linkedFramework("EventKit"), .linkedFramework("Photos")]),
         .executableTarget(
             name: "icloud-cli",
             dependencies: ["ICloudCLICore"]

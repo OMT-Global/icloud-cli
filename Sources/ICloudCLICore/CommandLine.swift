@@ -195,11 +195,13 @@ public struct PhotosListOptions: Equatable, Sendable {
     public var format: OutputFormat
     public var photosLibrary: URL
     public var limit: Int
+    public var degradedFilesystem: Bool
 
-    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary"), limit: Int = 200) {
+    public init(format: OutputFormat = .json, photosLibrary: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Photos Library.photoslibrary"), limit: Int = 200, degradedFilesystem: Bool = false) {
         self.format = format
         self.photosLibrary = photosLibrary
         self.limit = limit
+        self.degradedFilesystem = degradedFilesystem
     }
 }
 
@@ -613,6 +615,7 @@ public enum CLICommand: Equatable, Sendable {
     case newsTopics(NewsOptions)
     case notesList(NotesListOptions)
     case photosList(PhotosListOptions)
+    case photosAuthorization(OutputFormat)
     case photosScreenshots(PhotosScreenshotsOptions)
     case providersExternalManifest(OutputFormat)
     case providersList(OutputFormat)
@@ -638,6 +641,7 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
     case invalidSource(String)
     case invalidFormat(String)
     case invalidPassType(String)
+    case invalidOptionCombination(String)
 
     public var errorDescription: String? {
         switch self {
@@ -646,6 +650,7 @@ public enum CLIParseError: Error, LocalizedError, Equatable {
         case .invalidSource(let source): return "Invalid Safari tabs source: \(source)"
         case .invalidFormat(let format): return "Invalid output format: \(format)"
         case .invalidPassType(let type): return "Invalid wallet pass type: \(type)"
+        case .invalidOptionCombination(let message): return message
         }
     }
 }
@@ -861,6 +866,7 @@ public struct CLIParser: Sendable {
             guard let photosCommand = tokens.first else { throw CLIParseError.unknownCommand("photos") }
             tokens.removeFirst()
             switch photosCommand {
+            case "authorization": return .photosAuthorization(try parseOutputFormatOnly(tokens))
             case "screenshots": return .photosScreenshots(try parsePhotosScreenshotsOptions(tokens))
             case "list": return .photosList(try parsePhotosListOptions(tokens))
             case "shared-albums": return .metadata(.photosSharedAlbums, try parseMetadataOptions(tokens))
@@ -1231,18 +1237,35 @@ public struct CLIParser: Sendable {
     }
 
     private func parsePhotosListOptions(_ tokens: [String]) throws -> PhotosListOptions {
-        var options = PhotosListOptions(); var index = 0
+        var options = PhotosListOptions(); var index = 0; var specifiesPhotosLibrary = false
         while index < tokens.count {
             let token = tokens[index]
             switch token {
             case "--format": options.format = try parseFormat(after: token, in: tokens, at: &index)
-            case "--photos-library": options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+            case "--photos-library":
+                options.photosLibrary = try parseURL(after: token, in: tokens, at: &index)
+                specifiesPhotosLibrary = true
             case "--limit": options.limit = Int(try value(after: token, in: tokens, at: &index)) ?? options.limit
+            case "--degraded-filesystem": options.degradedFilesystem = true
             default: throw CLIParseError.unknownCommand(token)
             }
             index += 1
         }
+        if specifiesPhotosLibrary && !options.degradedFilesystem {
+            throw CLIParseError.invalidOptionCombination("--photos-library requires --degraded-filesystem")
+        }
         return options
+    }
+
+    private func parseOutputFormatOnly(_ tokens: [String]) throws -> OutputFormat {
+        var format = OutputFormat.json; var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            guard token == "--format" else { throw CLIParseError.unknownCommand(token) }
+            format = try parseFormat(after: token, in: tokens, at: &index)
+            index += 1
+        }
+        return format
     }
 
     private func parseNotesListOptions(_ tokens: [String]) throws -> NotesListOptions {
@@ -1610,7 +1633,8 @@ Usage:
   icloud-cli drive recents [--since ISO8601] [--limit N] [--scan-limit N] [--timeout-ms N] [--format json|text] [--icloud-root PATH]
   icloud-cli shortcuts list [--name PATTERN] [--format json|text] [--shortcuts-dir PATH]
   icloud-cli photos screenshots [--format json|text] [--screenshots-dir PATH]
-  icloud-cli photos list [--limit N] [--format json|text] [--photos-library PATH]
+  icloud-cli photos authorization [--format json|text]
+  icloud-cli photos list [--limit N] [--degraded-filesystem] [--format json|text] [--photos-library PATH]
   icloud-cli photos shared-albums [--format json|text] [--photos-store PATH]
   icloud-cli photos shared-library [--format json|text] [--photos-store PATH]
   icloud-cli notes list [--folder NAME] [--modified-since ISO8601] [--include-body] [--format json|text] [--notes-store PATH]
@@ -1681,7 +1705,7 @@ Commands:
   shortcuts list List local Shortcuts metadata without executing shortcuts.
   photos screenshots
                  List screenshot file metadata without reading pixels.
-  photos list    List local photo/video asset metadata without exporting media.
+  photos list    List PhotoKit asset facts without exporting or downloading media.
   notes list     List Notes titles and dates; body requires --include-body.
   reminders list List reminder metadata from a read-only local store.
   contacts list  List contact cards from local metadata.
