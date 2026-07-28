@@ -9,7 +9,7 @@ help:
 		"make test         - run Swift tests" \
 		"make coverage     - run source coverage gate" \
 		"make mutation-test - run mutation smoke checks" \
-		"make release      - build dist/icloud-cli and checksum" \
+		"make release VERSION=x.y.z - build a signed universal macOS DMG" \
 		"make run ARGS=... - run the debug CLI" \
 		"make clean        - remove SwiftPM build outputs"
 
@@ -26,10 +26,7 @@ mutation-test:
 	bash scripts/ci/run-mutation-smoke.sh
 
 release:
-	swift build $(SWIFT_FLAGS) -c release
-	mkdir -p dist
-	cp "$$(swift build $(SWIFT_FLAGS) -c release --show-bin-path)/icloud-cli" dist/icloud-cli
-	shasum -a 256 dist/icloud-cli > dist/icloud-cli.sha256
+	bash scripts/release/build-macos-artifact.sh "$(VERSION)"
 
 run:
 	swift run icloud-cli $(ARGS)
