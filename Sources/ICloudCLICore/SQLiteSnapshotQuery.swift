@@ -22,6 +22,22 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
         self.reportedStore = reportedStore ?? source.path
     }
 
+    public static func production(
+        source: URL,
+        timeout: TimeInterval = 10,
+        busyTimeoutMilliseconds: Int = 1_000,
+        temporaryRoot: URL = FileManager.default.temporaryDirectory,
+        reportedStore: String? = nil
+    ) -> Self {
+        Self(
+            source: source,
+            timeout: max(5, timeout),
+            busyTimeoutMilliseconds: max(500, busyTimeoutMilliseconds),
+            temporaryRoot: temporaryRoot,
+            reportedStore: reportedStore
+        )
+    }
+
     public func query<T: Decodable>(_ sql: String) throws -> [T] {
         try withSnapshot { snapshot, directory in
             try querySnapshot(snapshot, workspace: directory, sql: sql)
@@ -89,7 +105,8 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
     }
 
     func withSnapshot<Result>(_ operation: (URL, URL) throws -> Result) throws -> Result {
-        guard FileManager.default.fileExists(atPath: source.path) else {
+        let resolvedSource = source.resolvingSymlinksInPath()
+        guard FileManager.default.fileExists(atPath: resolvedSource.path) else {
             throw LocalInventoryError.missingStore(reportedStore)
         }
 
@@ -107,7 +124,7 @@ public struct SQLiteSnapshotQueryEngine: Sendable {
 
         let snapshot = directory.appendingPathComponent("snapshot.sqlite")
         do {
-            try createSQLiteSnapshot(from: source, to: snapshot)
+            try createSQLiteSnapshot(from: resolvedSource, to: snapshot)
         } catch let error as LocalInventoryError {
             throw error
         } catch {

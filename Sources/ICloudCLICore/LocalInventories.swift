@@ -696,7 +696,7 @@ public struct LocalSQLiteInventoryReader: Sendable {
     }
 
     private func withSnapshot<Result>(_ operation: (LocalSQLiteInventoryReader) throws -> Result) throws -> Result {
-        try SQLiteSnapshotQueryEngine(source: database).withSnapshot { snapshot, workspace in
+        try SQLiteSnapshotQueryEngine.production(source: database).withSnapshot { snapshot, workspace in
             try operation(LocalSQLiteInventoryReader(database: snapshot, snapshotsLiveStores: false, reportedStore: reportedStore, snapshotWorkspace: workspace))
         }
     }

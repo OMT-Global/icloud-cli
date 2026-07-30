@@ -4,6 +4,25 @@ import Testing
 
 private struct SnapshotValueRow: Decodable, Equatable { let value: String }
 
+@Test func productionSnapshotEngineEnforcesTimeoutFloors() {
+    let source = URL(fileURLWithPath: "/private/source.db")
+    let constrained = SQLiteSnapshotQueryEngine.production(
+        source: source,
+        timeout: 0.001,
+        busyTimeoutMilliseconds: 0
+    )
+    let relaxed = SQLiteSnapshotQueryEngine.production(
+        source: source,
+        timeout: 7,
+        busyTimeoutMilliseconds: 800
+    )
+
+    #expect(constrained.timeout == 5)
+    #expect(constrained.busyTimeoutMilliseconds == 500)
+    #expect(relaxed.timeout == 7)
+    #expect(relaxed.busyTimeoutMilliseconds == 800)
+}
+
 @Test func snapshotQueryReadsDatabaseWithoutCompanionFilesAndCleansUp() throws {
     let root = try temporarySQLiteSnapshotDirectory(named: "no-companions")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -30,6 +49,25 @@ private struct SnapshotValueRow: Decodable, Equatable { let value: String }
     let rows: [SnapshotValueRow] = try SQLiteSnapshotQueryEngine(source: database)
         .query("SELECT value FROM values_table ORDER BY value;")
     #expect(rows == [SnapshotValueRow(value: "wal-row")])
+}
+
+@Test func snapshotQueryFollowsSymlinkedStoreWithCoherentWALSnapshot() throws {
+    let root = try temporarySQLiteSnapshotDirectory(named: "symlink-wal")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let liveStore = root.appendingPathComponent("live/source.db")
+    try FileManager.default.createDirectory(at: liveStore.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let writer = try openWALFixture(database: liveStore)
+    defer { writer.stop() }
+    let linkedStore = root.appendingPathComponent("linked-source.db")
+    try FileManager.default.createSymbolicLink(atPath: linkedStore.path, withDestinationPath: liveStore.path)
+
+    let engine = SQLiteSnapshotQueryEngine(source: linkedStore)
+    try engine.withSnapshot { snapshot, workspace in
+        #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: snapshot.path)) == nil)
+        #expect(!FileManager.default.fileExists(atPath: snapshot.path + "-wal"))
+        let rows: [SnapshotValueRow] = try engine.querySnapshot(snapshot, workspace: workspace, sql: "SELECT value FROM values_table ORDER BY value;")
+        #expect(rows == [SnapshotValueRow(value: "wal-row")])
+    }
 }
 
 @Test func snapshotQueryCreatesSingleFileSnapshotForLiveWALStore() throws {
