@@ -18,6 +18,7 @@ The product started with Safari tabs and CloudTabs investigation, but the useful
 - Permission model: commands name unreadable paths and `permissions doctor` probes source availability without reading payload content.
 - Distribution path: versioned universal macOS DMGs signed with a stable identifier, notarized, stapled, and published with checksums.
 - Integration path: OpenClaw skill contract and redacted command output suitable for local node reporting.
+- Execution model: a signed on-demand CLI owns local archives; schedulers may invoke bounded commands, but a resident daemon is not required.
 
 ## Product Principles
 
@@ -37,6 +38,7 @@ The product started with Safari tabs and CloudTabs investigation, but the useful
 ## Non-Goals
 
 - Do not become a sync service, daemon, or remote data collector.
+- Do not add per-domain helpers or external delegation without a provider-specific issue proving the permission boundary, IPC, archive ownership, and recovery model.
 - Do not upload, persist, or share private Apple account data.
 - Do not add broad Apple cache readers without explicit privacy docs, fixtures, and command contracts.
 - Do not make OpenClaw or agent integrations depend on raw browsing or account payloads.
