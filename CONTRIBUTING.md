@@ -17,7 +17,9 @@ Contributions should start from a GitHub issue that is assigned or explicitly en
 
 ## Validation
 
-- Run `bash scripts/ci/run-fast-checks.sh` before opening a PR unless the PR explains why a check is not applicable.
+- Run the relevant local checks before opening a PR.
+- At the start of agent-authored PR work, request autoreview network access and, for private repository diffs, explicit authorization for the forthcoming intended PR diff. At closeout, use the `autoreview` skill against the actual base. Verify every finding, address accepted in-scope findings, and rerun affected checks and autoreview after edits until no accepted/actionable findings remain.
+- Record the final autoreview command and result in the PR. If authorization is declined or the skill is unavailable or cannot complete, stop and report that blocker instead of opening or updating the PR.
 - For this bootstrap contract, the required PR check surface is `CI Gate`.
 - Document any skipped checks in the PR with a concrete reason.
 
