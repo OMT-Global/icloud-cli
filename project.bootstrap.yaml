@@ -14,8 +14,10 @@ repo:
     - .github/PULL_REQUEST_TEMPLATE.md
     - .github/ISSUE_TEMPLATE/implementation.yml
     - .github/ISSUE_TEMPLATE/flow_blocker.yml
+    - .githooks/**
+    - docs/bootstrap/onboarding.md
 archetype:
-  kind: generic-polyglot
+  kind: generic-empty
   packageManager: swift
   moduleName: icloud_cli
 github:
@@ -34,6 +36,8 @@ github:
     hasWiki: false
     hasDiscussions: false
 ci:
+  codeqlLanguages:
+    - swift
   runnerPolicy: hybrid-safe
   fastChecks:
     - build
