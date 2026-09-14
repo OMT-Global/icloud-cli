@@ -85,3 +85,21 @@ Use this checklist after the first bootstrap render or whenever `project.bootstr
 
 - Run `bootstrap apply home --manifest ./project.bootstrap.yaml` after reviewing the bundled profile content.
 - The bootstrap manages portable Codex assets only. Auth, sessions, caches, and machine-local state stay unmanaged.
+
+## Managed-file ownership for iCloud CLI
+
+`repo.managedPaths` delegates only the existing commit guard and two generic issue
+forms to Bootstrap. `.bootstrap/managed-files.json` records their generated hashes.
+The repository owns `AGENTS.md`, `CONTRIBUTING.md`, `CODEOWNERS`, the PR template,
+and this onboarding guide. Keep the Swift test-before-build requirement, native
+macOS CI, and `@OMT-Global/omt-codeowners` mapping intact when reconciling templates.
+The manifest's `github.reviewers` list does not replace the live code-owner team.
+
+The initial ownership reconciliation was verified with Bootstrap commit
+`99455ebc120bc91987ee2f7f9a7c097ae73021dc`. Run a plan before applying with that
+version; the scoped plan must be unchanged. A managed-file hash mismatch must be
+resolved explicitly, not overwritten. Generic full renders would replace native
+instructions and team ownership, so do not expand the managed set without review.
+Swift CodeQL language metadata is already declared; no security workflow is added
+by this ownership-only recovery. The checklist above is operator guidance, not
+proof that every optional remote control or workflow is currently deployed.
