@@ -7,15 +7,12 @@ project:
   owner: OMT-Global
   defaultBranch: main
 repo:
+  # Preserve native Swift guidance and the live team-based governance contract.
+  # Bootstrap owns only these byte-compatible generic artifacts.
   managedPaths:
-    - AGENTS.md
-    - CONTRIBUTING.md
-    - CODEOWNERS
-    - .github/PULL_REQUEST_TEMPLATE.md
+    - .githooks/pre-commit
     - .github/ISSUE_TEMPLATE/implementation.yml
     - .github/ISSUE_TEMPLATE/flow_blocker.yml
-    - .githooks/**
-    - docs/bootstrap/onboarding.md
 archetype:
   kind: generic-empty
   packageManager: swift
