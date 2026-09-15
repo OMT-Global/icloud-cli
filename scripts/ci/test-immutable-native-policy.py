@@ -25,6 +25,20 @@ class NativePolicy(unittest.TestCase):
     def test_positive(self):
         self.assertEqual(self.check(), 0)
 
+    def test_complete_callee_contract(self):
+        # C7 used to pass: required substrings remain even when PR events are added.
+        mutations = [
+            ("github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+             "github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'"),
+            ("github.repository == 'OMT-Global/icloud-cli' &&",
+             "true || github.repository == 'OMT-Global/icloud-cli' &&"),
+            ("    if: >-", "    if: true # >-"),
+            ("      - name: Verify Xcode", "      - run: echo unexpected-step\n      - name: Verify Xcode"),
+        ]
+        for before, after in mutations:
+            with self.subTest(mutation=after):
+                self.assertNotEqual(self.check(callee_change=(before, after)), 0)
+
     def test_regressions(self):
         for before, after in [
             ("github.repository == 'OMT-Global/icloud-cli'", "true"),
