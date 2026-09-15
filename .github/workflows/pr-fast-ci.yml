@@ -27,22 +27,9 @@ jobs:
   trusted-ci-gate:
     name: Trusted Checks
     if: github.event_name != 'pull_request'
-    runs-on:
-      - self-hosted
-      - macOS
-      - ARM64
-      - xcode
-    env:
-      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Verify Xcode
-        run: xcodebuild -version
-
-      - name: Fast checks
-        run: bash scripts/ci/run-fast-checks.sh
+    permissions:
+      contents: read
+    uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@8ceaef64cbdd26396d5bd042daa890b27b6b8d2f
 
   ci-gate:
     name: CI Gate

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 bash scripts/ci/check-ci-policy.sh
+python3 scripts/ci/test-immutable-native-policy.py
 bash scripts/ci/check-shell-syntax.sh
 bash scripts/check-detect-secrets.sh --all-files
 bash scripts/check-privacy-fixtures.sh

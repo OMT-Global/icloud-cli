@@ -1,0 +1,31 @@
+name: Immutable native CI
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  trusted-ci-gate:
+    name: Trusted Checks
+    if: >-
+      github.repository == 'OMT-Global/icloud-cli' &&
+      ((github.ref == 'refs/heads/main' &&
+        (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/recovery/immutable-native-ci-20260915'))
+    runs-on:
+      group: macos-public-trusted
+      labels: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    steps:
+      - name: Checkout trusted source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: OMT-Global/icloud-cli
+          ref: ${{ github.ref == 'refs/heads/main' && github.sha || '0d498ddd01bade25de87a09364337a080cc85261' }}
+          persist-credentials: false
+      - name: Verify Xcode
+        run: xcodebuild -version
+      - name: Fast checks
+        run: bash scripts/ci/run-fast-checks.sh
