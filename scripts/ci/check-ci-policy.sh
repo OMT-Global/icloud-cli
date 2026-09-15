@@ -4,6 +4,8 @@ set -euo pipefail
 fast_script="${1:-scripts/ci/run-fast-checks.sh}"
 workflow="${2:-.github/workflows/pr-fast-ci.yml}"
 
+native_workflow="${3:-.github/workflows/native-trusted.yml}"
+
 failed=0
 
 require_file() {
@@ -86,6 +88,24 @@ if [[ -f "$workflow" ]]; then
   require_job_line "$workflow" "ci-gate" "    name: CI Gate"
   require_job_line "$workflow" "ci-gate" "    if: always()"
   require_contains "$workflow" "bash scripts/ci/run-fast-checks.sh"
+fi
+
+require_file "$native_workflow"
+if [[ -f "$native_workflow" ]]; then
+  require_contains "$workflow" "uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@8ceaef64cbdd26396d5bd042daa890b27b6b8d2f"
+  require_contains "$native_workflow" "github.repository == 'OMT-Global/icloud-cli'"
+  require_contains "$native_workflow" "github.ref == 'refs/heads/main'"
+  require_contains "$native_workflow" "github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
+  require_contains "$native_workflow" "github.ref == 'refs/heads/recovery/immutable-native-ci-20260915'"
+  require_contains "$native_workflow" "group: macos-public-trusted"
+  require_contains "$native_workflow" "persist-credentials: false"
+  require_contains "$native_workflow" "repository: OMT-Global/icloud-cli"
+  require_contains "$native_workflow" "0d498ddd01bade25de87a09364337a080cc85261"
+  require_contains "$native_workflow" "bash scripts/ci/run-fast-checks.sh"
+  if grep -E 'inputs:|secrets:|secrets\.|inputs\.|pull_request_target|head\.sha|head\.repo' "$native_workflow" >/dev/null; then
+    echo "Native callee must not accept caller code, inputs, or secrets" >&2
+    failed=1
+  fi
 fi
 
 exit "$failed"
