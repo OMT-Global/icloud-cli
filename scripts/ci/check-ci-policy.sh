@@ -92,6 +92,21 @@ fi
 
 require_file "$native_workflow"
 if [[ -f "$native_workflow" ]]; then
+  # The callee is immutable: verify its whole contract, not just required substrings.
+  # Updating the callee requires independent review and a deliberate digest update.
+  # Even formatting changes fail closed; this is not a general YAML validator.
+  if ! python3 - "$native_workflow" <<'PY_CONTRACT'
+import hashlib
+import pathlib
+import sys
+expected = "ee2abf80ebed89f4d549e14d01e73adee1be2ee738bbf8f32f41354323d2301d"
+actual = hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()
+if actual != expected:
+    sys.exit("Native callee differs from the reviewed immutable contract")
+PY_CONTRACT
+  then
+    failed=1
+  fi
   require_contains "$workflow" "uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@8ceaef64cbdd26396d5bd042daa890b27b6b8d2f"
   require_contains "$native_workflow" "github.repository == 'OMT-Global/icloud-cli'"
   require_contains "$native_workflow" "github.ref == 'refs/heads/main'"
