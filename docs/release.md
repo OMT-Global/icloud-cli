@@ -20,7 +20,13 @@ Local verification found `Developer ID Application: John TenEyck (TFGKTMNSZV)`, 
 
 ## GitHub security decision
 
-Branch protection currently enforces `CI Gate`, one CODEOWNER approval, stale-review dismissal, last-push approval, and administrators. Secret scanning, push protection, validity checks, and Dependabot security updates currently report disabled through the GitHub API. Enable secret scanning, push protection, validity checks, and Dependabot security updates before adding release credentials. If the API or organization plan rejects them, record the exact response on issue #98 and retain the existing repository secret-pattern gate; do not weaken release environment approval.
+Branch protection currently enforces `CI Gate`, one CODEOWNER approval, stale-review dismissal, last-push approval, and administrators.
+
+Secret scanning, secret-scanning push protection, Dependabot alerts, and Dependabot security updates are enabled on the repository (toggled 2026-09-23; exact API evidence recorded on issue #98). These were the protections required before adding release credentials, so that precondition is now met.
+
+Two flags remain disabled because they require GitHub Advanced Security, which is not licensed for this repository or organization: `secret_scanning_validity_checks` and `secret_scanning_non_provider_patterns`. A `PATCH` to `security_and_analysis` setting either to `enabled` returns HTTP 200 but leaves the status `disabled` (silently ignored, no error body). Enabling them later is an organization plan and licensing decision, not a repository-level toggle.
+
+Because those two premium flags are unavailable, retain the existing repository secret-pattern gate (`scripts/check-detect-secrets.sh`, run by `scripts/ci/run-fast-checks.sh`) and do not weaken release-environment approval. If GHAS becomes available, enable validity checks and non-provider patterns and update this section.
 
 No daemon or privileged helper is introduced for signing. The executable's stable identity and install path solve this release requirement independently of the execution-model decision in issue #83.
 
