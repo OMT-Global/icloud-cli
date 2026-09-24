@@ -62,4 +62,4 @@ Remaining implementation-time details (non-blocking): the exact `music history` 
 
 ## Approval gate
 
-The product owner has approved the design direction and resolved the open questions (2026-09-24). This ADR still becomes accepted only after **non-author architecture and security approval**, an explicit `VISION.md` boundary update, resolution of #83 as it applies to networked providers, and provisioning of operator credentials (Apple Developer Program + MusicKit `.p8`). Until then, the local-only/read-only default and the daemon non-goal remain authoritative, and no Apple Music API code is implemented.
+The product owner has approved the design direction and resolved the open questions (2026-09-24). This ADR still becomes accepted only after **non-author architecture and security approval**, the explicit `VISION.md` boundary update (included in this PR), resolution of #83 as it applies to networked providers, and provisioning of operator credentials (Apple Developer Program + MusicKit `.p8`). Until then, the local-only/read-only default and the daemon non-goal remain authoritative, and no Apple Music API code is implemented.
