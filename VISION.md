@@ -19,10 +19,11 @@ The product started with Safari tabs and CloudTabs investigation, but the useful
 - Distribution path: versioned universal macOS DMGs signed with a stable identifier, notarized, stapled, and published with checksums.
 - Integration path: OpenClaw skill contract and redacted command output suitable for local node reporting.
 - Execution model: a signed on-demand CLI owns local archives; schedulers may invoke bounded commands, but a resident daemon is not required.
+- Networked read path (proposed; [ADR 002](docs/adr/002-apple-music-api-network-provider.md), #112): an opt-in, read-only Apple Music API provider may fetch the signed-in user's own recently-played resources over HTTPS. It is inert without operator-supplied credentials, is excluded from the default polling set, requires `--confirm-sensitive`, issues `GET`s only (no mutation), never persists responses, and never logs tokens or raw payloads. Apple exposes no per-play timestamps, so playback time is reported as `null` rather than inferred.
 
 ## Product Principles
 
-- Local-only and read-only unless a future issue explicitly changes that boundary.
+- Local-only and read-only by default. A future issue may explicitly narrow that boundary for an opt-in, read-only networked read of the signed-in user's own Apple data; [ADR 002](docs/adr/002-apple-music-api-network-provider.md) (#112) is the first such exception and adds no mutation, no background collection, and no persistence of private data.
 - Sensitive output requires explicit confirmation or redaction; broad snapshots should prefer counts, statuses, and paths over raw content.
 - Permission errors should be actionable and path-specific, not vague.
 - Tests and privacy fixtures are part of the product contract for every parser.
@@ -37,7 +38,7 @@ The product started with Safari tabs and CloudTabs investigation, but the useful
 
 ## Non-Goals
 
-- Do not become a sync service, daemon, or remote data collector.
+- Do not become a sync service, daemon, or bulk remote data collector. A narrow, opt-in, read-only networked read of the signed-in user's own data (ADR 002) is not collection: it runs on demand, persists nothing, and never operates unattended.
 - Do not add per-domain helpers or external delegation without a provider-specific issue proving the permission boundary, IPC, archive ownership, and recovery model.
 - Do not upload, persist, or share private Apple account data.
 - Do not add broad Apple cache readers without explicit privacy docs, fixtures, and command contracts.
