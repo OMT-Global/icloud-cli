@@ -43,7 +43,7 @@ class NativePolicy(unittest.TestCase):
         for before, after in [
             ("github.repository == 'OMT-Global/icloud-cli'", "true"),
             ("github.ref == 'refs/heads/main'", "true"),
-            ("group: macos-public-trusted", "group: macos-private"),
+            ("runs-on: macos-15-arm64", "runs-on: [self-hosted, macOS, ARM64, xcode]"),
             ("persist-credentials: false", "persist-credentials: true"),
             ("0d498ddd01bade25de87a09364337a080cc85261", "untrusted-branch"),
             ("bash scripts/ci/run-fast-checks.sh", "echo skipped"),
@@ -52,7 +52,7 @@ class NativePolicy(unittest.TestCase):
             with self.subTest(before=before):
                 self.assertNotEqual(self.check(callee_change=(before, after)), 0)
         self.assertNotEqual(self.check(caller_change=("      - macos-15", "      - self-hosted")), 0)
-        self.assertNotEqual(self.check(caller_change=("@8ceaef64cbdd26396d5bd042daa890b27b6b8d2f", "@main")), 0)
+        self.assertNotEqual(self.check(caller_change=("@bba11a3341317df2fa95c5d65a03acae111e2565", "@main")), 0)
 
 if __name__ == "__main__":
     unittest.main()
