@@ -99,7 +99,7 @@ if [[ -f "$native_workflow" ]]; then
 import hashlib
 import pathlib
 import sys
-expected = "e27885f49dc7246ec13d7aa13520479d718cdde01f71c9fe3489f3383835dd7e"
+expected = "95befcdb3bf8aa6e37873e681482b9372ff80cac70f3a3f5d2d131c0f7afbcf2"
 actual = hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()
 if actual != expected:
     sys.exit("Native callee differs from the reviewed immutable contract")
@@ -107,12 +107,12 @@ PY_CONTRACT
   then
     failed=1
   fi
-  require_contains "$workflow" "uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@bba11a3341317df2fa95c5d65a03acae111e2565"
+  require_contains "$workflow" "uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@997923ba56572d7026a938861f25162a8f8f281b"
   require_contains "$native_workflow" "github.repository == 'OMT-Global/icloud-cli'"
   require_contains "$native_workflow" "github.ref == 'refs/heads/main'"
   require_contains "$native_workflow" "github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
   require_contains "$native_workflow" "github.ref == 'refs/heads/recovery/immutable-native-ci-20260915'"
-  require_contains "$native_workflow" "runs-on: macos-15-arm64"
+  require_contains "$native_workflow" "runs-on: macos-15"
   require_contains "$native_workflow" "persist-credentials: false"
   require_contains "$native_workflow" "repository: OMT-Global/icloud-cli"
   require_contains "$native_workflow" "0d498ddd01bade25de87a09364337a080cc85261"

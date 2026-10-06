@@ -3,7 +3,7 @@
 - Always work on a feature branch. Hooks block commits to `main` and `master`; enable them with `git config core.hooksPath .githooks`.
 - Stack baseline: Generic polyglot.
 - CI baseline: fast PR checks stay cheap and shell-safe; extended validation runs on `main`, nightly, or manual dispatch.
-- Runner policy: PR checks stay GitHub-hosted; the immutable trusted Swift lane uses GitHub-hosted `macos-15-arm64` with Xcode 16.4. Preserve callee event, checkout, input, and secret restrictions.
+- Runner policy: PR checks stay GitHub-hosted; the immutable trusted Swift lane uses GitHub-hosted `macos-15` with Xcode 16.4. Preserve callee event, checkout, input, and secret restrictions.
 - Build the tests first for every change: add or update the relevant test target before implementation, then run `swift test` before any standalone `swift build`.
 - PRs must use the generated pull request template. The required PR gate validates summary, issue linkage, validation evidence, and risk notes.
 - Never commit real secrets, runtime auth, or machine-local env files. Use templates and GitHub environments instead.
