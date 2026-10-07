@@ -29,7 +29,7 @@ jobs:
     if: github.event_name != 'pull_request'
     permissions:
       contents: read
-    uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@8ceaef64cbdd26396d5bd042daa890b27b6b8d2f
+    uses: OMT-Global/icloud-cli/.github/workflows/native-trusted.yml@997923ba56572d7026a938861f25162a8f8f281b
 
   ci-gate:
     name: CI Gate

@@ -38,7 +38,7 @@ Use this checklist after the first bootstrap render or whenever `project.bootstr
 
 - Private-repository trusted shell-safe jobs use `[self-hosted, linux, shell-only, private]`.
 - Public repository security workflows use GitHub-hosted isolation. Fork pull-request jobs always remain read-only and GitHub-hosted.
-- Native repos must use self-hosted runners for trusted required automation; Docker, service-container, browser, and `container:` workloads require a dedicated self-hosted runner pool with matching capability labels.
+- This public repository runs its immutable trusted Swift checks on GitHub-hosted `macos-15` with explicit Xcode 16.4 selection. Event, checkout, input, and secret restrictions remain enforced by the immutable policy contract.
 - Keep PR checks cheap. Add heavy validation to `scripts/ci/run-extended-validation.sh` instead of the PR lane.
 
 - Consume shared security, release, and AI attestation workflows from the control-plane repo once those contracts are pinned for production use.
